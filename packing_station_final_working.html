@@ -311,7 +311,6 @@
 
             // --- CORE LOGIC ---
             const fetchDispatchQueue = async () => {
-                // UPGRADE: Remove the date filter to show all pending boxes
                 const { data, error } = await db.from('boxes')
                     .select(`box_id, status, delivery_groups ( stores ( store_name, city ) )`)
                     .in('status', ['Pending', 'Packing']);
@@ -382,11 +381,9 @@
 
                 const order = activeBox.orders.find(o => o.gkb_order_no === orderNo);
                 
-                // UPGRADE: Handle incorrect scans with the new re-routing logic
                 if (!order) {
                     const { data: otherOrder } = await db.from('orders').select('*').eq('gkb_order_no', orderNo).single();
                     if (otherOrder && otherOrder.status !== 'Packed') {
-                        // If the scanned order exists but is in another box, show the exception modal
                         showExceptionModal(otherOrder);
                     } else {
                         addLogEntry(`Scan failed: Order <strong class="font-mono">${orderNo}</strong> does not belong in this box or is already packed.`, 'error');
@@ -402,13 +399,18 @@
                 if (error) { showToast(`DB Error: ${error.message}`, 'error'); return; }
                 
                 order.status = 'Packed';
-                renderActiveBox();
+                
+                // **FIX START**: Check for completion *after* the UI is updated.
+                const packedCount = activeBox.orders.filter(o => o.status === 'Packed').length;
+                const totalCount = activeBox.orders.length;
+
+                renderActiveBox(); // Render first to show the item as packed
                 addLogEntry(`Order <strong class="font-mono">${orderNo}</strong> packed into <strong class="font-mono">${activeBox.box_id}</strong>.`);
 
-                const packedCount = activeBox.orders.filter(o => o.status === 'Packed').length;
-                if (packedCount === activeBox.orders.length) {
+                if (packedCount === totalCount) {
                     await completeBox();
                 }
+                // **FIX END**
             };
 
             const completeBox = async () => {
@@ -420,12 +422,11 @@
                 showToast(`Box ${completedBoxId} complete!`, 'success');
                 
                 activeBox = null;
-                dispatchQueue = dispatchQueue.filter(b => b.box_id !== completedBoxId);
-                renderActiveBox();
-                renderQueue();
+                // Refresh the entire queue from the database to ensure it's up to date
+                await fetchDispatchQueue();
+                renderActiveBox(); // This will now show the placeholder
             };
 
-            // UPGRADE: New function to show the enhanced exception modal
             const showExceptionModal = (order) => {
                 exceptionContext = { order, originalBoxId: order.box_id };
                 UI.exceptionMessage.innerHTML = `Order <strong class="font-mono">${order.gkb_order_no}</strong> belongs to Box <strong class="font-mono">${order.box_id}</strong>. Do you want to move it to the active box?`;
@@ -433,7 +434,6 @@
                 UI.exceptionModal.classList.add('active');
             };
 
-            // UPGRADE: New function to handle the confirmation of moving an order
             const handleExceptionConfirm = async () => {
                 const { order, originalBoxId } = exceptionContext;
                 const targetBoxId = activeBox.box_id;
@@ -441,7 +441,6 @@
 
                 addLogEntry(`Attempting to move <strong class="font-mono">${order.gkb_order_no}</strong> from <strong class="font-mono">${originalBoxId}</strong> to <strong class="font-mono">${targetBoxId}</strong>.`, 'warning');
                 
-                // 1. Update the order's box_id in the database
                 const { error: updateError } = await db.from('orders').update({ box_id: targetBoxId }).eq('gkb_order_no', order.gkb_order_no);
                 if (updateError) { 
                     showToast('DB Error: Could not move order.', 'error'); 
@@ -449,7 +448,6 @@
                     return; 
                 }
                 
-                // 2. Log the event to the new packing_exceptions table for auditing
                 const { error: logError } = await db.from('packing_exceptions').insert({
                     gkb_order_no: order.gkb_order_no,
                     original_box_id: originalBoxId,
@@ -463,9 +461,8 @@
                 exceptionContext = null;
                 showToast(`Order ${order.gkb_order_no} successfully moved!`, 'success');
 
-                // 3. Refresh data and UI
-                await fetchDispatchQueue(); // Refresh the whole queue
-                await activateBox(activeBox.box_id); // Re-activate the current box to show the new item
+                await fetchDispatchQueue();
+                await activateBox(activeBox.box_id);
             };
 
             const handleScan = async (scannedValue) => {
