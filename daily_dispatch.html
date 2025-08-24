@@ -511,6 +511,22 @@
                 return;
             }
 
+            // --- STAGE 2: DATA INTEGRITY CHECKS (ALL ERRORS COLLECTED) ---
+            
+            // **FIX**: Check for duplicates within the CSV itself first.
+            const orderNosInCSV = dispatchData.map(row => row.gkb_order_no).filter(Boolean);
+            const seen = new Set();
+            const duplicates = orderNosInCSV.filter(orderNo => {
+                return seen.size === seen.add(orderNo).size;
+            });
+
+            if (duplicates.length > 0) {
+                [...new Set(duplicates)].forEach(orderNo => {
+                    errors.push({ line: 'CSV', reason: `Order <strong class="font-bold">${orderNo}</strong> is duplicated within the uploaded file.` });
+                });
+            }
+
+            // Check for missing store codes and non-existent stores
             dispatchData.forEach((row, index) => {
                 const storeCode = row.customer_ref?.split('/')[0].trim();
                 if (!storeCode) {
@@ -520,10 +536,9 @@
                 }
             });
 
-            // --- STAGE 2: CHECK FOR EXISTING ORDERS IN DB ---
-            const orderNosFromCSV = dispatchData.map(row => row.gkb_order_no).filter(Boolean);
-            if (orderNosFromCSV.length > 0) {
-                const { data: existingOrders, error } = await db.from('orders').select('gkb_order_no').in('gkb_order_no', orderNosFromCSV);
+            // Check for orders that already exist in the database
+            if (orderNosInCSV.length > 0) {
+                const { data: existingOrders, error } = await db.from('orders').select('gkb_order_no').in('gkb_order_no', orderNosInCSV);
                 if (error) {
                     showError('Database Error', `Failed to check for existing orders: ${error.message}`);
                     showLoading(false);
@@ -624,11 +639,11 @@
         const renderReviewUI = (planPreview) => {
             const hasErrors = processedData.errors.length > 0;
 
-            document.getElementById('summary-orders').textContent = processedData.orders.length;
-            document.getElementById('summary-total-boxes').textContent = planPreview.length;
-            document.getElementById('summary-updated-boxes').textContent = processedData.updatedBoxCount;
+            document.getElementById('summary-orders').textContent = hasErrors ? 0 : processedData.orders.length;
+            document.getElementById('summary-total-boxes').textContent = hasErrors ? 0 : planPreview.length;
+            document.getElementById('summary-updated-boxes').textContent = hasErrors ? 0 : processedData.updatedBoxCount;
             document.getElementById('summary-errors').textContent = processedData.errors.length;
-            document.getElementById('summary-new-boxes').textContent = processedData.newBoxCount;
+            document.getElementById('summary-new-boxes').textContent = hasErrors ? 0 : processedData.newBoxCount;
 
             // Show/hide containers based on errors
             document.getElementById('new-boxes-container').classList.toggle('hidden', hasErrors || processedData.newBoxesDetails.length === 0);
@@ -639,7 +654,7 @@
             document.getElementById('confirm-create-btn').disabled = hasErrors;
 
             if (hasErrors) {
-                document.getElementById('error-details').innerHTML = processedData.errors.map(e => `<div><strong class="font-semibold">${e.line !== 'N/A' ? `Line ${e.line}:` : ''}</strong> ${e.reason}</div>`).join('');
+                document.getElementById('error-details').innerHTML = processedData.errors.map(e => `<div><strong class="font-semibold">${e.line !== 'N/A' && e.line !== 'CSV' ? `Line ${e.line}:` : ''}</strong> ${e.reason}</div>`).join('');
             } else {
                 if (processedData.newBoxesDetails.length > 0) {
                     document.getElementById('new-boxes-list').innerHTML = processedData.newBoxesDetails.map(detail => `
