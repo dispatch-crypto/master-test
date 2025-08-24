@@ -141,7 +141,8 @@
             const params = new URLSearchParams(window.location.search);
             const set = (id, val) => {
                 const el = document.getElementById(id);
-                if (el) el.textContent = val ?? '—';
+                // FIX: Use decodeURIComponent to fix garbled text
+                if (el) el.textContent = val ? decodeURIComponent(val) : '—';
             };
 
             // Populate data from URL
@@ -171,7 +172,7 @@
             }
 
             // Populate order list (show up to 5)
-            const orders = params.get('orders') ? JSON.parse(params.get('orders')) : [];
+            const orders = params.get('orders') ? JSON.parse(decodeURIComponent(params.get('orders'))) : [];
             const ul = document.getElementById('orders_list');
             orders.slice(0, 5).forEach(o => {
                 const li = document.createElement('li');
@@ -184,8 +185,10 @@
                 set('more_count', extra);
             }
 
-            // Automatically trigger print dialog
-            // window.print();
+            // Automatically trigger print dialog after a short delay to allow rendering
+            setTimeout(() => {
+                 window.print();
+            }, 500);
         });
     </script>
 </body>
