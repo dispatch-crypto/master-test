@@ -3,145 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Print Box Label</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Courier Box Label</title>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
     <style>
-        /* Styles for a standard 4x6 inch shipping label (approximated in pixels) */
-        /* TSC DA310 is 300 DPI. 4x6 inches = 1200x1800 pixels. We use a smaller size for screen view. */
-        @media screen {
-            body {
-                background-color: #e5e7eb;
-            }
-            .label {
-                width: 400px;
-                height: 600px;
-                margin: 2rem auto;
-                box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-            }
+        /* Styles for a standard 4x6 inch shipping label */
+        @page {
+            size: 4in 6in;
+            margin: 0.1in;
         }
-        /* Print-specific styles to ensure correct output */
         @media print {
             body {
                 margin: 0;
                 padding: 0;
             }
-            .label {
-                width: 4in;
-                height: 6in;
-                margin: 0;
-                padding: 0.15in;
-                box-shadow: none;
-                border: none;
-            }
             .no-print {
                 display: none;
             }
         }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+        .label {
+            width: 3.8in;
+            height: 5.8in;
+            border: 2px solid #000;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+        .sep {
+            border-top: 2px solid #000;
+            margin: 8px 0;
+        }
+        .h2 {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .mono {
+            font-family: "Courier New", monospace;
+        }
+        .small {
+            font-size: 10px;
+        }
+        .bold {
+            font-weight: 700;
+        }
+        .boxid {
+            font-size: 20px;
+            font-weight: 900;
+        }
+        .block {
+            margin: 5px 0;
+        }
+        .two-col {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 10px;
+        }
+        .barcode {
+            height: 50px;
+            width: 100%;
+        }
+        ul {
+            margin: 4px 0;
+            padding-left: 16px;
+            font-size: 10px;
+        }
     </style>
 </head>
-<body class="font-sans">
-
-    <div class="label bg-white p-4 flex flex-col text-black">
-        <!-- Header Section -->
-        <div class="grid grid-cols-3 gap-2 pb-2 border-b-2 border-black">
-            <div class="col-span-2">
-                <p class="text-sm font-bold">Courier: <span id="courier-name" class="font-normal">N/A</span></p>
-                <p class="text-sm font-bold">Docket No: <span id="docket-number" class="font-normal">N/A</span></p>
-            </div>
-            <div class="text-right">
-                <p class="text-sm font-bold">Date: <span id="shipment-date" class="font-normal">N/A</span></p>
-                <p class="text-sm font-bold">Service: <span class="font-normal">Prepaid</span></p>
-            </div>
+<body>
+    <div class="label">
+        <!-- Header -->
+        <div class="row">
+            <div><span class="h2">Courier:</span> <span id="courier_name">-</span></div>
+            <div><span class="h2">Docket:</span> <span id="docket_no" class="mono">—</span></div>
         </div>
+        <div class="small">Service: <span id="service_type">Prepaid</span> • Date: <span id="ship_date">—</span></div>
+        <div class="sep"></div>
 
-        <!-- Barcode Section -->
-        <div class="text-center my-4">
-            <p class="font-bold text-lg">BOX ID: <span id="box-id-text">N/A</span></p>
-            <svg id="barcode" class="mx-auto"></svg>
+        <!-- Box ID & Barcode -->
+        <div class="block text-center">
+            <div class="h2">BOX ID</div>
+            <div class="boxid mono" id="box_id">BOX0001</div>
+            <svg id="box_barcode" class="barcode"></svg>
         </div>
+        <div class="sep"></div>
 
-        <!-- Address Section -->
-        <div class="grid grid-cols-2 gap-4 border-t-2 border-b-2 border-black py-2">
+        <!-- Addresses -->
+        <div class="two-col block">
             <div>
-                <p class="text-xs font-bold uppercase border-b border-gray-400 mb-1">TO (Consignee):</p>
-                <p class="font-bold text-sm" id="store-name">Store Name</p>
-                <p class="text-xs" id="store-address">Store Address</p>
-                <p class="text-xs"><strong>Phone:</strong> <span id="store-phone"></span></p>
-                <p class="text-xs"><strong>Store Code:</strong> <span id="store-code"></span></p>
+                <div class="h2">TO (Consignee)</div>
+                <div class="bold" id="store_name">Store Name</div>
+                <div id="addr">123 Main Street</div>
+                <div><span id="city">City</span> – <span id="pincode">PIN</span></div>
+                <div>Ph: <span id="mobile">9xxxxxxxxx</span></div>
+                <div class="small bold">Store Code: <span id="store_code">000</span></div>
             </div>
             <div>
-                <p class="text-xs font-bold uppercase border-b border-gray-400 mb-1">FROM (Shipper):</p>
-                <p class="font-bold text-sm">GKB Eyecare Pvt Ltd</p>
-                <p class="text-xs">B-48, 1st Floor, Sector - 88</p>
-                <p class="text-xs">Noida, UP - 201306</p>
-                <p class="text-xs"><strong>Phone:</strong> 9289012244</p>
+                <div class="h2">FROM (Shipper)</div>
+                <div class="bold">GKB Eyecare Pvt Ltd</div>
+                <div class="small">B-48, 1st Floor, Sector - 88</div>
+                <div class="small">Noida, UP – 201306</div>
+                <div class="small">Ph: 9289012244</div>
             </div>
         </div>
-        
-        <!-- QR Code and Contents Section -->
-        <div class="flex-grow flex items-center justify-between mt-2">
-             <div class="text-center">
-                 <p class="text-xs font-bold">Scan to Confirm Delivery</p>
-                 <div id="qrcode" class="mt-1"></div>
-             </div>
-             <div class="text-right">
-                <p class="text-xs font-bold">Contents:</p>
-                <p class="text-xs">Optical Lenses & Frames</p>
-             </div>
+        <div class="sep"></div>
+
+        <!-- Contents -->
+        <div class="block flex-grow">
+            <div class="h2">CONTENTS</div>
+            <ul id="orders_list" class="small">
+                <!-- Order items will be injected here -->
+            </ul>
+            <div class="small" id="more_orders" style="display:none;">+<span id="more_count">0</span> more</div>
         </div>
 
-        <!-- Footer Section -->
-        <div class="text-xs text-center border-t-2 border-black pt-2 mt-auto">
-            <p>Delivery Group: <span id="delivery-group">N/A</span> | Box Status: <span id="box-status">N/A</span></p>
+        <!-- Footer -->
+        <div class="sep"></div>
+        <div class="row small">
+            <div>Delivery Group: <b id="dgid">—</b></div>
+            <div>Status: <b id="status">Packed</b></div>
         </div>
     </div>
     
-    <div class="text-center mt-4 no-print">
-        <button onclick="window.print()" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700">Print Label</button>
+    <div class="no-print" style="text-align: center; margin-top: 20px;">
+        <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px;">Print</button>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
+            const set = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val ?? '—';
+            };
 
-            // Populate text fields
-            document.getElementById('courier-name').textContent = params.get('courierName') || 'N/A';
-            document.getElementById('docket-number').textContent = params.get('docketNumber') || 'N/A';
-            document.getElementById('shipment-date').textContent = new Date(params.get('shipmentDate')).toLocaleDateString('en-GB');
-            document.getElementById('box-id-text').textContent = params.get('boxId') || 'N/A';
-            document.getElementById('store-name').textContent = params.get('storeName') || 'N/A';
-            document.getElementById('store-address').textContent = params.get('address') || 'N/A';
-            document.getElementById('store-phone').textContent = params.get('phone') || 'N/A';
-            document.getElementById('store-code').textContent = params.get('storeCode') || 'N/A';
-            document.getElementById('delivery-group').textContent = params.get('deliveryGroupId') || 'N/A';
-            document.getElementById('box-status').textContent = params.get('boxStatus') || 'N/A';
+            // Populate data from URL
+            set('courier_name', params.get('courierName'));
+            set('docket_no', params.get('docketNumber'));
+            set('ship_date', new Date(params.get('shipmentDate')).toLocaleDateString('en-GB'));
+            set('box_id', params.get('boxId'));
+            set('store_code', params.get('storeCode'));
+            set('store_name', params.get('storeName'));
+            set('addr', params.get('address'));
+            set('city', params.get('city'));
+            set('pincode', params.get('pincode'));
+            set('mobile', params.get('phone'));
+            set('dgid', params.get('deliveryGroupId'));
+            set('status', params.get('boxStatus'));
 
             // Generate Barcode
             const boxId = params.get('boxId');
             if (boxId) {
-                JsBarcode("#barcode", boxId, {
+                JsBarcode("#box_barcode", boxId, {
                     format: "CODE128",
-                    width: 2,
+                    width: 2.5,
                     height: 50,
                     displayValue: false,
                     margin: 0
                 });
             }
 
-            // Generate QR Code
-            const qrContainer = document.getElementById('qrcode');
-            if (boxId && qrContainer) {
-                const qr = qrcode(0, 'M');
-                // Use your actual Netlify URL here
-                qr.addData(`https://your-netlify-app-name.netlify.app/customer_confirmation.html?box=${boxId}`);
-                qr.make();
-                qrContainer.innerHTML = qr.createImgTag(4, 4);
+            // Populate order list (show up to 5)
+            const orders = params.get('orders') ? JSON.parse(params.get('orders')) : [];
+            const ul = document.getElementById('orders_list');
+            orders.slice(0, 5).forEach(o => {
+                const li = document.createElement('li');
+                li.textContent = o;
+                ul.appendChild(li);
+            });
+            const extra = orders.length - 5;
+            if (extra > 0) {
+                document.getElementById('more_orders').style.display = 'block';
+                set('more_count', extra);
             }
-            
+
             // Automatically trigger print dialog
-            // window.print(); 
+            // window.print();
         });
     </script>
 </body>
