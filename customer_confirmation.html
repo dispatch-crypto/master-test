@@ -31,7 +31,6 @@
         [data-theme="dark"] .bg-white { background-color: #1e293b; }
         [data-theme="dark"] .text-slate-800 { color: #f1f5f9; }
         [data-theme="dark"] .text-slate-900 { color: #ffffff; }
-        /* FIX: Corrected text colors for dark mode */
         [data-theme="dark"] .text-slate-700 { color: #cbd5e1; }
         [data-theme="dark"] .text-slate-600 { color: #94a3b8; }
         [data-theme="dark"] .text-slate-500 { color: #64748b; }
@@ -39,7 +38,6 @@
         [data-theme="dark"] .bg-slate-50 { background-color: #334155; }
         [data-theme="dark"] .bg-slate-100 { background-color: #475569; }
         [data-theme="dark"] .text-indigo-600 { color: #a5b4fc; }
-        /* FIX: Add styles for form inputs in dark mode */
         [data-theme="dark"] input[type="text"], 
         [data-theme="dark"] input[type="tel"], 
         [data-theme="dark"] textarea {
@@ -116,6 +114,14 @@
                 <i class="ph-bold ph-check-circle text-6xl text-emerald-500 mx-auto"></i>
                 <p id="success-message" class="mt-4 text-2xl font-semibold text-slate-800">Thank you!</p>
                 <p class="text-slate-500 mt-1">Your response has been recorded.</p>
+            </div>
+
+            <!-- Already Confirmed State -->
+            <div id="already-confirmed-state" class="hidden text-center py-16 content-fade-in">
+                <i class="ph-bold ph-info text-6xl text-sky-500 mx-auto"></i>
+                <p class="mt-4 text-2xl font-semibold text-slate-800">Confirmation Already Submitted</p>
+                <p class="text-slate-500 mt-2">This delivery was already processed.</p>
+                <div id="confirmation-details" class="mt-4 text-sm bg-slate-50 p-4 rounded-lg"></div>
             </div>
 
             <!-- Confirmation View -->
@@ -199,6 +205,8 @@
                 errorMessage: document.getElementById('error-message'),
                 successState: document.getElementById('success-state'),
                 successMessage: document.getElementById('success-message'),
+                alreadyConfirmedState: document.getElementById('already-confirmed-state'),
+                confirmationDetails: document.getElementById('confirmation-details'),
                 confirmationView: document.getElementById('confirmation-view'),
                 boxIdDisplay: document.getElementById('box-id-display'),
                 storeDetailsDisplay: document.getElementById('store-details-display'),
@@ -221,7 +229,7 @@
             };
 
             const showState = (state) => {
-                ['loadingState', 'errorState', 'successState', 'confirmationView'].forEach(s => UI[s].classList.add('hidden'));
+                ['loadingState', 'errorState', 'successState', 'confirmationView', 'alreadyConfirmedState'].forEach(s => UI[s].classList.add('hidden'));
                 if (UI[state]) {
                     UI[state].classList.remove('hidden');
                 }
@@ -249,7 +257,6 @@
                      return;
                 }
 
-                // FIX: Require notes when reporting an issue
                 if (status === 'Issue Reported' && !notes) {
                     alert('Please describe the issue in the "Notes" field before reporting.');
                     UI.notesInput.focus();
@@ -300,6 +307,31 @@
             };
 
             const loadBoxDetails = async (boxId) => {
+                // *** FIX: Check for existing confirmation first ***
+                const { data: existingConfirmation, error: checkError } = await db.from('delivery_confirmations')
+                    .select('*')
+                    .eq('box_id', boxId)
+                    .limit(1);
+
+                if (checkError) {
+                    showState('errorState');
+                    UI.errorMessage.textContent = 'Could not verify confirmation status.';
+                    return;
+                }
+
+                if (existingConfirmation.length > 0) {
+                    const confirmation = existingConfirmation[0];
+                    UI.confirmationDetails.innerHTML = `
+                        <p><strong>Confirmed By:</strong> ${confirmation.confirmed_by_name}</p>
+                        <p><strong>Date:</strong> ${new Date(confirmation.created_at).toLocaleString()}</p>
+                        <p><strong>Status:</strong> ${confirmation.status}</p>
+                        ${confirmation.notes ? `<p><strong>Notes:</strong> ${confirmation.notes}</p>` : ''}
+                    `;
+                    showState('alreadyConfirmedState');
+                    return;
+                }
+
+                // If no confirmation exists, proceed to load the form
                 const { data, error } = await db.from('boxes')
                     .select(`
                         box_id,
