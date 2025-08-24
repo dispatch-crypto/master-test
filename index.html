@@ -261,7 +261,7 @@
                 redirectTo('packing_station_final_working.html');
                 return; // Stop the rest of the dashboard from loading
             }
-            
+            }
             UI.userDisplay.textContent = currentUser.name;
             UI.userRoleDisplay.textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
             UI.userInitials.textContent = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
