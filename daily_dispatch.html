@@ -230,7 +230,7 @@
                         <div class="bg-rose-100 text-rose-700 p-2 rounded-lg mr-3">
                             <i class="ph-bold ph-warning-circle text-xl"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-slate-800">Error Details</h3>
+                        <h3 class="text-xl font-bold text-slate-800">Errors Found - Action Required</h3>
                     </div>
                     <div id="error-details" class="bg-rose-50 p-4 rounded-lg max-h-60 overflow-y-auto text-sm font-mono"></div>
                 </div>
@@ -318,9 +318,8 @@
 </div>
 
 <script type="module">
-    // *** FIX: Reverted to hardcoded credentials to fix local file module error. ***
-    const SUPABASE_URL = 'https://nizucjvifkzcjistbleu.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5penVjanZpZmt6Y2ppc3RibGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwMzg1NzYsImV4cCI6MjA3MTYxNDU3Nn0.D2AOafbw8ehjxJmWyxTPxJL1k-MTQCAvvqwoknCIZW8';
+    // Using config.js since this will be hosted on Netlify
+    import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
     
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -496,113 +495,101 @@
         const processFiles = async () => {
             showLoading(true, 'Validating files...');
             const dispatchFileKey = Array.from(uploadedFiles.keys()).find(k => k.includes('lab_dispatch'));
-            const storesFileKey = Array.from(uploadedFiles.keys()).find(k => k.includes('stores'));
             const dispatchData = uploadedFiles.get(dispatchFileKey);
-            const newStoresData = uploadedFiles.get(storesFileKey);
+            const errors = [];
 
+            // --- STAGE 1: BASIC CSV VALIDATION ---
             if (!dispatchData || dispatchData.length === 0) {
-                showLoading(false);
                 showError('Missing Data', 'The `lab_dispatch.csv` file is required and is either missing or empty.');
+                showLoading(false);
                 return;
             }
-
             const requiredCols = ['gkb_order_no', 'customer_ref'];
             if (requiredCols.some(col => !(col in (dispatchData[0] || {})))) {
-                showLoading(false);
                 showError('Invalid CSV', `The lab_dispatch.csv file is missing required columns: ${requiredCols.join(', ')}`);
+                showLoading(false);
                 return;
             }
 
-            if (newStoresData && newStoresData.length > 0) {
-                showLoading(true, 'Updating store data...');
-                try {
-                    const storesToUpsert = newStoresData.map(store => ({
-                        store_code: store.store_code, store_name: store.store_name, address: store.address,
-                        city: store.city, state: store.state, pincode: store.pincode, mobile: store.mobile
-                    }));
-                    const { error } = await db.from('stores').upsert(storesToUpsert, { onConflict: 'store_code' });
-                    if (error) throw error;
-                    await fetchStoreMaster();
-                } catch (error) {
+            dispatchData.forEach((row, index) => {
+                const storeCode = row.customer_ref?.split('/')[0].trim();
+                if (!storeCode) {
+                    errors.push({ line: index + 2, reason: `Missing store code in 'customer_ref'.`});
+                } else if (!storeMaster.has(storeCode)) {
+                    errors.push({ line: index + 2, reason: `Store code "${storeCode}" does not exist in the database.`});
+                }
+            });
+
+            // --- STAGE 2: CHECK FOR EXISTING ORDERS IN DB ---
+            const orderNosFromCSV = dispatchData.map(row => row.gkb_order_no).filter(Boolean);
+            if (orderNosFromCSV.length > 0) {
+                const { data: existingOrders, error } = await db.from('orders').select('gkb_order_no').in('gkb_order_no', orderNosFromCSV);
+                if (error) {
+                    showError('Database Error', `Failed to check for existing orders: ${error.message}`);
                     showLoading(false);
-                    showError('Database Error', `Failed to update stores: ${error.message}`);
                     return;
                 }
+                if (existingOrders.length > 0) {
+                    existingOrders.forEach(order => {
+                        errors.push({ line: 'N/A', reason: `Order <strong class="font-bold">${order.gkb_order_no}</strong> already exists in the database.` });
+                    });
+                }
             }
-            
+
+            // --- FINAL DECISION: STOP OR PROCEED ---
+            if (errors.length > 0) {
+                processedData = { orders: [], boxes: [], errors, newBoxCount: 0, updatedBoxCount: 0, newBoxesDetails: [] };
+                renderReviewUI([]); // Render the review UI to show the errors
+                showLoading(false);
+                showSection('review-section');
+                return; // STOP PROCESSING
+            }
+
+            // --- STAGE 3: PROCESS VALID DATA (IF NO ERRORS) ---
             showLoading(true, 'Analyzing dispatch plan...');
             const todayStr = new Date().toISOString().split('T')[0];
             const dateSuffix = `${new Date().getDate().toString().padStart(2, '0')}${(new Date().getMonth() + 1).toString().padStart(2, '0')}`;
             
-            // Final arrays to hold the processed data
             const finalOrders = [];
             const finalBoxes = new Map();
-            const errors = [];
             const planPreview = [];
             const newBoxesDetails = [];
             let updatedBoxCount = 0;
 
-            // Group orders from CSV by their delivery destination (delivery_group_id)
             const groups = new Map();
-            dispatchData.forEach((row, index) => {
+            dispatchData.forEach((row) => {
                 const storeCode = row.customer_ref?.split('/')[0].trim();
-                if (!storeCode) {
-                    errors.push({ line: index + 2, reason: `Missing store code in 'customer_ref'.`}); return;
-                }
                 const storeInfo = storeMaster.get(storeCode);
-                if (!storeInfo || !storeInfo.delivery_group_id) {
-                    errors.push({ line: index + 2, reason: `Store "${storeCode}" not in DB or missing a delivery group.`}); return;
-                }
                 if (!groups.has(storeInfo.delivery_group_id)) {
                     groups.set(storeInfo.delivery_group_id, []);
                 }
                 groups.get(storeInfo.delivery_group_id).push(row);
             });
 
-            // UPGRADE LOGIC STARTS HERE
-            // Process each group of orders destined for the same location
             for (const [deliveryGroupId, orderRows] of groups.entries()) {
                 let assignedBoxId;
-
-                // 1. Check for an existing, undispatched box for this delivery group
-                const { data: existingBox, error: dbError } = await db.from('boxes')
-                    .select('box_id')
-                    .eq('delivery_group_id', deliveryGroupId)
-                    .in('status', ['Pending', 'Packing'])
-                    .limit(1)
-                    .single();
-
-                if (dbError && dbError.code !== 'PGRST116') { // Ignore 'PGRST116' which means "no rows found"
-                    errors.push({ line: 'DB Check', reason: `Failed to check for existing boxes: ${dbError.message}` });
-                    continue; // Skip this group if we can't check the DB
-                }
+                const { data: existingBox } = await db.from('boxes').select('box_id').eq('delivery_group_id', deliveryGroupId).in('status', ['Pending', 'Packing']).limit(1).single();
 
                 if (existingBox) {
-                    // 2a. An existing box was found, so we use its ID
                     assignedBoxId = existingBox.box_id;
                     if (!planPreview.some(p => p.boxId === assignedBoxId)) {
                         updatedBoxCount++;
                     }
                 } else {
-                    // 2b. No existing box found, so we generate a new ID
-                    const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
-                    const firstStoreCode = uniqueStoreCodes[0];
-                    const boxType = uniqueStoreCodes.length > 1 ? 'BULK' : 'BEN';
+                    const firstStoreCode = orderRows[0].customer_ref.split('/')[0].trim();
+                    const boxType = 'BEN'; // Simplified box type
                     assignedBoxId = `${boxType}-${dateSuffix}-${firstStoreCode}`;
                     
-                    // Add this new box to the list of boxes to be created/upserted
                     if (!finalBoxes.has(assignedBoxId)) {
-                        const firstStoreInfo = storeMaster.get(firstStoreCode);
                         finalBoxes.set(assignedBoxId, { 
                             box_id: assignedBoxId, 
                             dispatch_date: todayStr, 
-                            delivery_group_id: firstStoreInfo.delivery_group_id 
+                            delivery_group_id: deliveryGroupId 
                         });
                         newBoxesDetails.push({ boxId: assignedBoxId, storeCode: firstStoreCode });
                     }
                 }
 
-                // 3. Assign the determined box ID to all orders in the current group
                 orderRows.forEach(row => {
                     finalOrders.push({ 
                         gkb_order_no: row.gkb_order_no, 
@@ -614,19 +601,16 @@
                     });
                 });
                 
-                // Add to plan preview for the UI, ensuring no duplicates
                 if (!planPreview.some(p => p.boxId === assignedBoxId)) {
                     const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
-                    const boxType = uniqueStoreCodes.length > 1 ? 'BULK' : 'BEN';
-                    planPreview.push({ boxId: assignedBoxId, boxType, stores: uniqueStoreCodes.join(', ') });
+                    planPreview.push({ boxId: assignedBoxId, boxType: 'BEN', stores: uniqueStoreCodes.join(', ') });
                 }
             }
-            // UPGRADE LOGIC ENDS HERE
 
             processedData = { 
                 orders: finalOrders, 
                 boxes: Array.from(finalBoxes.values()), 
-                errors, 
+                errors: [], 
                 newBoxCount: newBoxesDetails.length, 
                 updatedBoxCount, 
                 newBoxesDetails 
@@ -638,33 +622,36 @@
         };
 
         const renderReviewUI = (planPreview) => {
+            const hasErrors = processedData.errors.length > 0;
+
             document.getElementById('summary-orders').textContent = processedData.orders.length;
             document.getElementById('summary-total-boxes').textContent = planPreview.length;
             document.getElementById('summary-updated-boxes').textContent = processedData.updatedBoxCount;
             document.getElementById('summary-errors').textContent = processedData.errors.length;
             document.getElementById('summary-new-boxes').textContent = processedData.newBoxCount;
 
-            const newBoxesContainer = document.getElementById('new-boxes-container');
-            newBoxesContainer.classList.toggle('hidden', processedData.newBoxesDetails.length === 0);
-            if (processedData.newBoxesDetails.length > 0) {
-                document.getElementById('new-boxes-list').innerHTML = processedData.newBoxesDetails.map(detail => `
-                    <div class="bg-slate-50 p-3 rounded-lg flex justify-between items-center border">
-                        <p class="font-mono text-sm text-slate-700">${detail.boxId}</p>
-                        <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">${detail.storeCode}</span>
-                    </div>`).join('');
-            }
+            // Show/hide containers based on errors
+            document.getElementById('new-boxes-container').classList.toggle('hidden', hasErrors || processedData.newBoxesDetails.length === 0);
+            document.getElementById('plan-preview-container').classList.toggle('hidden', hasErrors || planPreview.length === 0);
+            document.getElementById('error-details-container').classList.toggle('hidden', !hasErrors);
 
-            const errorContainer = document.getElementById('error-details-container');
-            errorContainer.classList.toggle('hidden', processedData.errors.length === 0);
-            if(processedData.errors.length > 0) {
-                document.getElementById('error-details').innerHTML = processedData.errors.map(e => `<div><strong class="font-semibold">Line ${e.line}:</strong> ${e.reason}</div>`).join('');
-            }
+            // Disable confirm button if there are errors
+            document.getElementById('confirm-create-btn').disabled = hasErrors;
 
-            const planPreviewContainer = document.getElementById('plan-preview-container');
-            planPreviewContainer.classList.toggle('hidden', planPreview.length === 0);
-            if (planPreview.length > 0) {
-                const tableHTML = `<table class="w-full text-left"><thead><tr class="border-b"><th class="p-2">Box ID</th><th class="p-2">Type</th><th class="p-2">Stores</th></tr></thead><tbody>${planPreview.map(p => `<tr class="border-b border-slate-100"><td class="p-2 font-mono">${p.boxId}</td><td class="p-2">${p.boxType}</td><td class="p-2">${p.stores}</td></tr>`).join('')}</tbody></table>`;
-                document.getElementById('plan-preview').innerHTML = tableHTML;
+            if (hasErrors) {
+                document.getElementById('error-details').innerHTML = processedData.errors.map(e => `<div><strong class="font-semibold">${e.line !== 'N/A' ? `Line ${e.line}:` : ''}</strong> ${e.reason}</div>`).join('');
+            } else {
+                if (processedData.newBoxesDetails.length > 0) {
+                    document.getElementById('new-boxes-list').innerHTML = processedData.newBoxesDetails.map(detail => `
+                        <div class="bg-slate-50 p-3 rounded-lg flex justify-between items-center border">
+                            <p class="font-mono text-sm text-slate-700">${detail.boxId}</p>
+                            <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">${detail.storeCode}</span>
+                        </div>`).join('');
+                }
+                if (planPreview.length > 0) {
+                    const tableHTML = `<table class="w-full text-left"><thead><tr class="border-b"><th class="p-2">Box ID</th><th class="p-2">Type</th><th class="p-2">Stores</th></tr></thead><tbody>${planPreview.map(p => `<tr class="border-b border-slate-100"><td class="p-2 font-mono">${p.boxId}</td><td class="p-2">${p.boxType}</td><td class="p-2">${p.stores}</td></tr>`).join('')}</tbody></table>`;
+                    document.getElementById('plan-preview').innerHTML = tableHTML;
+                }
             }
         };
 
@@ -672,18 +659,15 @@
             showLoading(true, 'Creating boxes and orders...');
             const { boxes, orders } = processedData;
             try {
-                // Upsert new boxes. The DB will ignore conflicts on existing box_id's.
                 if (boxes.length > 0) {
                     const { error: boxError } = await db.from('boxes').upsert(boxes, { onConflict: 'box_id' });
                     if (boxError) throw new Error(`Box creation failed: ${boxError.message}`);
                 }
-
-                // Insert orders. We use upsert here to handle cases where an order might be re-processed.
                 if (orders.length > 0) {
-                    const { error: orderError } = await db.from('orders').upsert(orders, { onConflict: 'gkb_order_no' });
+                    // Use 'insert' instead of 'upsert' as we've already validated that these orders are new.
+                    const { error: orderError } = await db.from('orders').insert(orders);
                     if (orderError) throw new Error(`Order creation failed: ${orderError.message}`);
                 }
-
                 renderResultsUI();
                 showSection('results-section');
             } catch (error) {
