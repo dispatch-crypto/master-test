@@ -153,7 +153,7 @@
                     </div>
                     <div class="md:col-span-1">
                         <label for="mobile-input" class="block text-sm font-medium text-slate-700">Mobile No.</label>
-                        <input type="tel" id="mobile-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Your mobile number">
+                        <input type="tel" id="mobile-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="10-digit mobile number">
                     </div>
                     <div class="md:col-span-1">
                         <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Optional)</label>
@@ -229,8 +229,9 @@
                     UI.nameInput.focus();
                     return;
                 }
-                if (!confirmedByMobile) {
-                    alert('Please enter your mobile number.');
+                // FIX: Add 10-digit mobile number validation
+                if (!/^\d{10}$/.test(confirmedByMobile)) {
+                    alert('Please enter a valid 10-digit mobile number.');
                     UI.mobileInput.focus();
                     return;
                 }
@@ -242,7 +243,7 @@
                 
                 showState('loadingState');
 
-                // *** FIX: Fetch the shipment_id before inserting the confirmation ***
+                // FIX: Fetch the shipment_id before inserting the confirmation
                 const { data: shipmentItem, error: itemError } = await db.from('shipment_items')
                     .select('shipment_id')
                     .eq('box_id', boxData.box_id)
@@ -260,7 +261,7 @@
                 const confirmationData = allOrders.map(orderNo => {
                     const orderStatus = confirmedOrders.includes(orderNo) ? 'Received' : 'Issue Reported';
                     return {
-                        shipment_id: shipmentItem.shipment_id, // Include the fetched shipment_id
+                        shipment_id: shipmentItem.shipment_id,
                         confirmed_by_name: confirmedByName,
                         confirmed_by_mobile: confirmedByMobile,
                         status: orderStatus,
