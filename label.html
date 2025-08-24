@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Box Label</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
+    <style>
+        /* Styles for a standard 4x6 inch shipping label (approximated in pixels) */
+        /* TSC DA310 is 300 DPI. 4x6 inches = 1200x1800 pixels. We use a smaller size for screen view. */
+        @media screen {
+            body {
+                background-color: #e5e7eb;
+            }
+            .label {
+                width: 400px;
+                height: 600px;
+                margin: 2rem auto;
+                box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            }
+        }
+        /* Print-specific styles to ensure correct output */
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .label {
+                width: 4in;
+                height: 6in;
+                margin: 0;
+                padding: 0.15in;
+                box-shadow: none;
+                border: none;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <div class="label bg-white p-4 flex flex-col text-black">
+        <!-- Header Section -->
+        <div class="grid grid-cols-3 gap-2 pb-2 border-b-2 border-black">
+            <div class="col-span-2">
+                <p class="text-sm font-bold">Courier: <span id="courier-name" class="font-normal">N/A</span></p>
+                <p class="text-sm font-bold">Docket No: <span id="docket-number" class="font-normal">N/A</span></p>
+            </div>
+            <div class="text-right">
+                <p class="text-sm font-bold">Date: <span id="shipment-date" class="font-normal">N/A</span></p>
+                <p class="text-sm font-bold">Service: <span class="font-normal">Prepaid</span></p>
+            </div>
+        </div>
+
+        <!-- Barcode Section -->
+        <div class="text-center my-4">
+            <p class="font-bold text-lg">BOX ID: <span id="box-id-text">N/A</span></p>
+            <svg id="barcode" class="mx-auto"></svg>
+        </div>
+
+        <!-- Address Section -->
+        <div class="grid grid-cols-2 gap-4 border-t-2 border-b-2 border-black py-2">
+            <div>
+                <p class="text-xs font-bold uppercase border-b border-gray-400 mb-1">TO (Consignee):</p>
+                <p class="font-bold text-sm" id="store-name">Store Name</p>
+                <p class="text-xs" id="store-address">Store Address</p>
+                <p class="text-xs"><strong>Phone:</strong> <span id="store-phone"></span></p>
+                <p class="text-xs"><strong>Store Code:</strong> <span id="store-code"></span></p>
+            </div>
+            <div>
+                <p class="text-xs font-bold uppercase border-b border-gray-400 mb-1">FROM (Shipper):</p>
+                <p class="font-bold text-sm">GKB Eyecare Pvt Ltd</p>
+                <p class="text-xs">B-48, 1st Floor, Sector - 88</p>
+                <p class="text-xs">Noida, UP - 201306</p>
+                <p class="text-xs"><strong>Phone:</strong> 9289012244</p>
+            </div>
+        </div>
+        
+        <!-- QR Code and Contents Section -->
+        <div class="flex-grow flex items-center justify-between mt-2">
+             <div class="text-center">
+                 <p class="text-xs font-bold">Scan to Confirm Delivery</p>
+                 <div id="qrcode" class="mt-1"></div>
+             </div>
+             <div class="text-right">
+                <p class="text-xs font-bold">Contents:</p>
+                <p class="text-xs">Optical Lenses & Frames</p>
+             </div>
+        </div>
+
+        <!-- Footer Section -->
+        <div class="text-xs text-center border-t-2 border-black pt-2 mt-auto">
+            <p>Delivery Group: <span id="delivery-group">N/A</span> | Box Status: <span id="box-status">N/A</span></p>
+        </div>
+    </div>
+    
+    <div class="text-center mt-4 no-print">
+        <button onclick="window.print()" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700">Print Label</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+
+            // Populate text fields
+            document.getElementById('courier-name').textContent = params.get('courierName') || 'N/A';
+            document.getElementById('docket-number').textContent = params.get('docketNumber') || 'N/A';
+            document.getElementById('shipment-date').textContent = new Date(params.get('shipmentDate')).toLocaleDateString('en-GB');
+            document.getElementById('box-id-text').textContent = params.get('boxId') || 'N/A';
+            document.getElementById('store-name').textContent = params.get('storeName') || 'N/A';
+            document.getElementById('store-address').textContent = params.get('address') || 'N/A';
+            document.getElementById('store-phone').textContent = params.get('phone') || 'N/A';
+            document.getElementById('store-code').textContent = params.get('storeCode') || 'N/A';
+            document.getElementById('delivery-group').textContent = params.get('deliveryGroupId') || 'N/A';
+            document.getElementById('box-status').textContent = params.get('boxStatus') || 'N/A';
+
+            // Generate Barcode
+            const boxId = params.get('boxId');
+            if (boxId) {
+                JsBarcode("#barcode", boxId, {
+                    format: "CODE128",
+                    width: 2,
+                    height: 50,
+                    displayValue: false,
+                    margin: 0
+                });
+            }
+
+            // Generate QR Code
+            const qrContainer = document.getElementById('qrcode');
+            if (boxId && qrContainer) {
+                const qr = qrcode(0, 'M');
+                // Use your actual Netlify URL here
+                qr.addData(`https://your-netlify-app-name.netlify.app/customer_confirmation.html?box=${boxId}`);
+                qr.make();
+                qrContainer.innerHTML = qr.createImgTag(4, 4);
+            }
+            
+            // Automatically trigger print dialog
+            // window.print(); 
+        });
+    </script>
+</body>
+</html>
