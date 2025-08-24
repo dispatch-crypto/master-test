@@ -3,16 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports - Smart Dispatch</title>
+    <title>Reports - Smart Dispatch System</title>
+    
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Phosphor Icons for a clean, modern look -->
     <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+
+    <!-- Custom Styles -->
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
-        [data-theme="dark"] body { background-color: #1e293b; color: #f1f5f9; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+        [data-theme="dark"] body {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
         [data-theme="dark"] .bg-white { background-color: #1f2a3a; }
         [data-theme="dark"] .text-slate-800 { color: #f1f5f9; }
         [data-theme="dark"] .text-slate-900 { color: #ffffff; }
@@ -21,12 +37,24 @@
         [data-theme="dark"] .bg-slate-50 { background-color: #334155; }
         [data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #475569; }
         [data-theme="dark"] .text-indigo-700 { color: #a5b4fc; }
+        [data-theme="dark"] input[type="date"] { background-color: #334155; border-color: #475569; color-scheme: dark; }
         [data-theme="dark"] table th { background-color: #334155; }
         [data-theme="dark"] table tr:nth-child(even) { background-color: #293548; }
+
         .sidebar { transition: all 0.3s ease; width: 256px; }
         .sidebar.collapsed { width: 80px; }
         .sidebar-item-text, .sidebar-brand-text { transition: all 0.2s ease; }
         .sidebar.collapsed .sidebar-item-text, .sidebar.collapsed .sidebar-brand-text { opacity: 0; pointer-events: none; width: 0; }
+        
+        .tab-button.active {
+            border-bottom-color: #4f46e5;
+            color: #4f46e5;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
     </style>
 </head>
 <body class="antialiased text-slate-800">
@@ -37,10 +65,14 @@
         <div>
             <div class="flex items-center justify-between mb-8 p-2">
                 <a href="./index.html" class="flex items-center space-x-3 overflow-hidden">
-                    <div class="bg-indigo-600 p-2 rounded-lg shadow flex-shrink-0"><i class="ph-bold ph-list-dashes text-white text-lg"></i></div>
+                    <div class="bg-indigo-600 p-2 rounded-lg shadow flex-shrink-0">
+                        <i class="ph-bold ph-list-dashes text-white text-lg"></i>
+                    </div>
                     <span class="sidebar-brand-text text-xl font-extrabold tracking-tight text-slate-900 whitespace-nowrap">Smart Dispatch</span>
                 </a>
-                <button id="sidebar-toggle" class="p-1 rounded-md hover:bg-slate-100"><i class="ph-bold ph-caret-left text-slate-500"></i></button>
+                <button id="sidebar-toggle" class="p-1 rounded-md hover:bg-slate-100">
+                    <i class="ph-bold ph-caret-left text-slate-500"></i>
+                </button>
             </div>
             <nav>
                 <ul class="space-y-2">
@@ -48,12 +80,13 @@
                     <li><a href="./daily_dispatch.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-cloud-arrow-up text-xl"></i><span class="sidebar-item-text">Daily Dispatch</span></a></li>
                     <li><a href="./packing_station_final_working.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-package text-xl"></i><span class="sidebar-item-text">Packing Station</span></a></li>
                     <li><a href="./shipment_management_final.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-truck text-xl"></i><span class="sidebar-item-text">Shipments</span></a></li>
-                    <li id="admin-nav-link" class="hidden"><a href="./admin.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-user-gear text-xl"></i><span class="sidebar-item-text">Admin Panel</span></a></li>
+                    <!-- Add a link to the reports page in the sidebar, it will be hidden by JS if user is not manager/admin -->
+                    <li id="reports-nav-link" class="hidden"><a href="./reports.html" class="flex items-center space-x-4 p-3 rounded-lg text-indigo-700 bg-indigo-100 font-semibold"><i class="ph-fill ph-chart-bar text-xl"></i><span class="sidebar-item-text">Reports</span></a></li>
                 </ul>
             </nav>
         </div>
         <div class="space-y-4">
-             <div class="flex items-center justify-between p-3 rounded-lg bg-slate-50">
+            <div class="flex items-center justify-between p-3 rounded-lg bg-slate-50">
                 <div class="flex items-center space-x-3 overflow-hidden">
                     <div class="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center flex-shrink-0"><span class="font-bold text-indigo-800" id="user-initials"></span></div>
                     <div class="sidebar-item-text flex flex-col"><span class="text-sm font-semibold text-slate-800 whitespace-nowrap" id="user-display">Loading...</span><span class="text-xs text-slate-500 whitespace-nowrap" id="user-role-display"></span></div>
@@ -67,32 +100,69 @@
         </div>
     </aside>
 
+    <!-- Main Content -->
     <main id="main-content" class="flex-1 p-6 lg:p-8 overflow-auto">
+        <!-- Access Denied Message -->
         <div id="access-denied" class="hidden text-center py-16">
             <i class="ph-bold ph-hand-palm text-6xl text-rose-500 mx-auto"></i>
             <h2 class="mt-4 text-2xl font-bold text-slate-800">Access Denied</h2>
             <p class="text-slate-500 mt-1">You do not have permission to view this page.</p>
         </div>
 
+        <!-- Reports Panel Content -->
         <div id="reports-panel" class="hidden">
-            <h1 class="text-3xl font-extrabold text-slate-900 mb-8">Reports</h1>
+            <h1 class="text-3xl font-extrabold text-slate-900 mb-8">System Reports</h1>
             
-            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
-                <div class="md:flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-bold text-slate-800 mb-4 md:mb-0">Filter Reports</h2>
-                    <div class="flex items-center space-x-4">
-                        <select id="report-type" class="rounded-lg border-slate-300 shadow-sm">
-                            <option value="exceptions">Packing Exceptions</option>
-                            <option value="issues">Delivery Issues</option>
-                        </select>
-                        <input type="date" id="start-date" class="rounded-lg border-slate-300 shadow-sm">
-                        <input type="date" id="end-date" class="rounded-lg border-slate-300 shadow-sm">
-                        <button id="filter-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">Filter</button>
+            <!-- Filters -->
+            <div class="bg-white p-4 rounded-2xl shadow-lg border border-slate-200 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label for="start-date" class="block text-sm font-medium text-slate-700">Start Date</label>
+                        <input type="date" id="start-date" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="end-date" class="block text-sm font-medium text-slate-700">End Date</label>
+                        <input type="date" id="end-date" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                    <button id="filter-btn" class="md:col-start-4 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 flex items-center justify-center space-x-2">
+                        <i class="ph-bold ph-funnel"></i>
+                        <span>Apply Filters</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="border-b border-slate-200 mb-6">
+                <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                    <button class="tab-button active" data-tab="exceptions">Packing Exceptions</button>
+                    <button class="tab-button" data-tab="issues">Delivery Issues</button>
+                </nav>
+            </div>
+
+            <!-- Tab Content Area -->
+            <div>
+                <div class="flex justify-end mb-4">
+                    <button id="download-csv-btn" class="bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-700 flex items-center justify-center space-x-2 text-sm">
+                        <i class="ph-bold ph-file-csv"></i>
+                        <span>Download CSV</span>
+                    </button>
+                </div>
+                <!-- Exceptions Tab -->
+                <div id="exceptions-tab" class="tab-content active">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                        <div id="exceptions-table-container" class="overflow-x-auto">
+                            <!-- Table will be injected here -->
+                        </div>
                     </div>
                 </div>
-                
-                <div id="report-output" class="overflow-x-auto">
-                    <!-- Report table will be injected here -->
+
+                <!-- Issues Tab -->
+                <div id="issues-tab" class="tab-content">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                         <div id="issues-table-container" class="overflow-x-auto">
+                            <!-- Table will be injected here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -106,7 +176,11 @@
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     document.addEventListener('DOMContentLoaded', () => {
+        // --- STATE & UI ---
         let currentUser = null;
+        let activeTab = 'exceptions';
+        let reportData = [];
+
         const UI = {
             sidebar: document.getElementById('sidebar'),
             sidebarToggle: document.getElementById('sidebar-toggle'),
@@ -116,25 +190,31 @@
             userInitials: document.getElementById('user-initials'),
             userRoleDisplay: document.getElementById('user-role-display'),
             logoutBtn: document.getElementById('logout-btn'),
-            adminNavLink: document.getElementById('admin-nav-link'),
+            reportsNavLink: document.getElementById('reports-nav-link'),
+            mainContent: document.getElementById('main-content'),
             accessDenied: document.getElementById('access-denied'),
             reportsPanel: document.getElementById('reports-panel'),
-            reportType: document.getElementById('report-type'),
             startDate: document.getElementById('start-date'),
             endDate: document.getElementById('end-date'),
             filterBtn: document.getElementById('filter-btn'),
-            reportOutput: document.getElementById('report-output'),
+            tabs: document.querySelectorAll('.tab-button'),
+            tabContents: document.querySelectorAll('.tab-content'),
+            exceptionsContainer: document.getElementById('exceptions-table-container'),
+            issuesContainer: document.getElementById('issues-table-container'),
+            downloadCsvBtn: document.getElementById('download-csv-btn'),
         };
 
-        const redirectTo = (page) => { window.location.href = `./${page}`; };
-
+        // --- UTILS ---
+        const redirectTo = (page) => window.location.href = `./${page}`;
         const setTheme = (theme) => {
             document.documentElement.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
-            if (theme === 'dark') { UI.themeCircle.style.transform = 'translateX(20px)'; } 
-            else { UI.themeCircle.style.transform = 'translateX(0)'; }
+            UI.themeCircle.style.transform = (theme === 'dark') ? 'translateX(20px)' : 'translateX(0)';
         };
 
+        const formatDate = (dateString) => new Date(dateString).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+
+        // --- CORE LOGIC ---
         const initializeApp = async () => {
             const { data: { session } } = await db.auth.getSession();
             if (!session) { redirectTo('login.html'); return; }
@@ -151,85 +231,148 @@
             // Security Check
             if (currentUser.role === 'manager' || currentUser.role === 'admin') {
                 UI.reportsPanel.classList.remove('hidden');
-                if (currentUser.role === 'admin') UI.adminNavLink.classList.remove('hidden');
-                UI.filterBtn.click(); // Load initial report
+                UI.reportsNavLink.classList.remove('hidden');
+                // Set default dates (past 7 days)
+                const today = new Date();
+                const pastDate = new Date();
+                pastDate.setDate(today.getDate() - 7);
+                UI.endDate.value = today.toISOString().split('T')[0];
+                UI.startDate.value = pastDate.toISOString().split('T')[0];
+                fetchReportData(); // Load initial data
             } else {
                 UI.accessDenied.classList.remove('hidden');
             }
         };
 
-        const fetchAndRenderReport = async () => {
-            const type = UI.reportType.value;
+        const fetchReportData = async () => {
             const startDate = UI.startDate.value;
             const endDate = UI.endDate.value;
-
-            let query;
-            if (type === 'exceptions') {
-                query = db.from('packing_exceptions').select('*, users(full_name)');
-            } else {
-                query = db.from('delivery_confirmations').select('*').eq('status', 'Issue Reported');
-            }
-
-            if (startDate) query = query.gte(type === 'exceptions' ? 'moved_at' : 'created_at', startDate);
-            if (endDate) query = query.lte(type === 'exceptions' ? 'moved_at' : 'created_at', endDate);
-
-            const { data, error } = await query;
-            if (error) {
-                console.error('Error fetching report:', error);
-                UI.reportOutput.innerHTML = `<p class="text-rose-500">Error loading report.</p>`;
+            if (!startDate || !endDate) {
+                alert('Please select both a start and end date.');
                 return;
             }
 
-            renderReport(type, data);
+            renderTable(null, 'loading'); // Show loading state
+
+            let query;
+            if (activeTab === 'exceptions') {
+                query = db.from('packing_exceptions')
+                    .select('*, users(full_name)')
+                    .gte('moved_at', startDate)
+                    .lte('moved_at', `${endDate}T23:59:59.999Z`);
+            } else {
+                query = db.from('delivery_confirmations')
+                    .select('*')
+                    .eq('status', 'Issue Reported')
+                    .gte('created_at', startDate)
+                    .lte('created_at', `${endDate}T23:59:59.999Z`);
+            }
+
+            const { data, error } = await query;
+            if(error) {
+                console.error("Error fetching report data:", error);
+                renderTable(null, 'error');
+                return;
+            }
+            reportData = data;
+            renderTable(data);
         };
 
-        const renderReport = (type, data) => {
+        const renderTable = (data, state = 'loaded') => {
+            const container = (activeTab === 'exceptions') ? UI.exceptionsContainer : UI.issuesContainer;
+            if (state === 'loading') {
+                container.innerHTML = `<div class="text-center py-16"><div class="spinner h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div><p class="mt-4">Loading report...</p></div>`;
+                return;
+            }
+            if (state === 'error' || !data) {
+                container.innerHTML = `<p class="text-center py-16 text-rose-500">Failed to load report data.</p>`;
+                return;
+            }
             if (data.length === 0) {
-                UI.reportOutput.innerHTML = `<p class="text-slate-500 text-center py-8">No records found for the selected criteria.</p>`;
+                container.innerHTML = `<p class="text-center py-16 text-slate-500">No records found for the selected date range.</p>`;
                 return;
             }
 
             let headers, rows;
-            if (type === 'exceptions') {
-                headers = ['Order No', 'Original Box', 'Moved To Box', 'Moved By', 'Reason', 'Date'];
-                rows = data.map(row => `
-                    <tr>
-                        <td class="p-3 font-mono">${row.gkb_order_no}</td>
-                        <td class="p-3 font-mono">${row.original_box_id}</td>
-                        <td class="p-3 font-mono">${row.moved_to_box_id}</td>
-                        <td class="p-3">${row.users?.full_name || 'N/A'}</td>
-                        <td class="p-3">${row.reason || ''}</td>
-                        <td class="p-3">${new Date(row.moved_at).toLocaleString()}</td>
-                    </tr>
-                `).join('');
+            if (activeTab === 'exceptions') {
+                headers = ['Date', 'Order No', 'Original Box', 'Moved To Box', 'Moved By', 'Reason'];
+                rows = data.map(item => `
+                    <tr class="border-b border-slate-200">
+                        <td class="p-3">${formatDate(item.moved_at)}</td>
+                        <td class="p-3 font-mono">${item.gkb_order_no}</td>
+                        <td class="p-3 font-mono">${item.original_box_id}</td>
+                        <td class="p-3 font-mono">${item.moved_to_box_id}</td>
+                        <td class="p-3">${item.users?.full_name || 'N/A'}</td>
+                        <td class="p-3">${item.reason || ''}</td>
+                    </tr>`).join('');
             } else {
-                headers = ['Box ID', 'Order No', 'Confirmed By', 'Notes', 'Date'];
-                rows = data.map(row => `
-                    <tr>
-                        <td class="p-3 font-mono">${row.box_id}</td>
-                        <td class="p-3 font-mono">${row.gkb_order_no}</td>
-                        <td class="p-3">${row.confirmed_by_name}</td>
-                        <td class="p-3">${row.notes || ''}</td>
-                        <td class="p-3">${new Date(row.created_at).toLocaleString()}</td>
-                    </tr>
-                `).join('');
+                headers = ['Date', 'Order No', 'Box ID', 'Reported By', 'Mobile', 'Customer Note', 'Status'];
+                rows = data.map(item => `
+                    <tr class="border-b border-slate-200">
+                        <td class="p-3">${formatDate(item.created_at)}</td>
+                        <td class="p-3 font-mono">${item.gkb_order_no}</td>
+                        <td class="p-3 font-mono">${item.box_id}</td>
+                        <td class="p-3">${item.confirmed_by_name}</td>
+                        <td class="p-3">${item.confirmed_by_mobile}</td>
+                        <td class="p-3">${item.notes || ''}</td>
+                        <td class="p-3">${item.resolution_status}</td>
+                    </tr>`).join('');
             }
 
-            UI.reportOutput.innerHTML = `
+            container.innerHTML = `
                 <table class="w-full text-sm text-left">
                     <thead class="bg-slate-50"><tr>${headers.map(h => `<th class="p-3">${h}</th>`).join('')}</tr></thead>
                     <tbody>${rows}</tbody>
-                </table>
-            `;
+                </table>`;
+        };
+        
+        const downloadCsv = () => {
+            if (reportData.length === 0) {
+                alert("No data to export.");
+                return;
+            }
+            
+            const headers = (activeTab === 'exceptions') 
+                ? ['moved_at', 'gkb_order_no', 'original_box_id', 'moved_to_box_id', 'moved_by_user_id', 'reason']
+                : ['created_at', 'gkb_order_no', 'box_id', 'confirmed_by_name', 'confirmed_by_mobile', 'notes', 'resolution_status'];
+            
+            const csvRows = [
+                headers.join(','),
+                ...reportData.map(row => headers.map(header => {
+                    let val = row[header] === null || row[header] === undefined ? '' : `"${String(row[header]).replace(/"/g, '""')}"`;
+                    return val;
+                }).join(','))
+            ];
+            
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', `${activeTab}_report_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         };
 
-        // Event Listeners
-        UI.filterBtn.addEventListener('click', fetchAndRenderReport);
+        // --- EVENT LISTENERS ---
+        UI.tabs.forEach(button => {
+            button.addEventListener('click', () => {
+                activeTab = button.dataset.tab;
+                UI.tabs.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                UI.tabContents.forEach(content => content.classList.toggle('active', content.id === `${activeTab}-tab`));
+                fetchReportData();
+            });
+        });
+
+        UI.filterBtn.addEventListener('click', fetchReportData);
+        UI.downloadCsvBtn.addEventListener('click', downloadCsv);
         UI.sidebarToggle.addEventListener('click', () => UI.sidebar.classList.toggle('collapsed'));
         UI.themeToggle.addEventListener('click', () => setTheme((localStorage.getItem('theme') || 'light') === 'light' ? 'dark' : 'light'));
         UI.logoutBtn.addEventListener('click', async () => { await db.auth.signOut(); redirectTo('login.html'); });
 
-        // Initialization
+        // --- INITIALIZATION ---
         setTheme(localStorage.getItem('theme') || 'light');
         initializeApp();
     });
