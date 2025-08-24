@@ -15,8 +15,6 @@
 
     <!-- Supabase & jsPDF Clients -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://unpkg.com/jspdf-autotable"></script>
     
     <!-- Phosphor Icons for a clean, modern look -->
     <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
@@ -178,7 +176,6 @@
         
         const { createClient } = supabase;
         const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const { jsPDF } = window.jspdf;
 
         document.addEventListener('DOMContentLoaded', () => {
             // --- STATE MANAGEMENT ---
@@ -267,10 +264,9 @@
 
             // --- CORE LOGIC ---
             const fetchInitialData = async () => {
-                // UPGRADE: Fetch all undispatched shipments, not just today's
                 const { data: shipmentsData, error: shipmentsError } = await db.from('shipments')
                     .select(`*, shipment_items(box_id), couriers(name)`)
-                    .not('status', 'eq', 'Delivered'); // Get all shipments that are not yet delivered
+                    .not('status', 'eq', 'Delivered');
                 
                 const { data: boxesData, error: boxesError } = await db.from('boxes')
                     .select(`box_id, delivery_groups(stores!inner(courier_id, couriers(name)))`)
@@ -356,32 +352,54 @@
                 }
             };
             
-            const handlePrintManifest = (shipmentId) => {
+            // *** NEW FUNCTION: Replaces the old PDF logic ***
+            const handlePrintLabels = async (shipmentId) => {
                 const shipment = shipments.find(s => s.id == shipmentId);
-                if (!shipment) return;
+                if (!shipment) {
+                    showToast('Shipment not found.', 'error');
+                    return;
+                }
 
-                const doc = new jsPDF();
-                doc.setFontSize(22);
-                doc.text('Shipment Manifest', 105, 20, { align: 'center' });
-                doc.setFontSize(12);
-                doc.text(`Date: ${new Date(shipment.shipment_date).toLocaleDateString()}`, 20, 40);
-                doc.text(`Courier: ${shipment.couriers.name}`, 20, 50);
-                doc.text(`Docket / AWB: ${shipment.docket_number}`, 20, 60);
+                const boxIds = shipment.shipment_items.map(item => item.box_id);
+                if (boxIds.length === 0) {
+                    showToast('No boxes in this shipment to print.', 'info');
+                    return;
+                }
 
-                doc.autoTable({
-                    startY: 70,
-                    head: [['#', 'Box ID']],
-                    body: shipment.shipment_items.map((item, index) => [index + 1, item.box_id]),
+                // Fetch detailed data for all boxes in the shipment
+                const { data: boxesData, error } = await db.from('boxes')
+                    .select('*, orders(store_code), delivery_groups(*, stores(*))')
+                    .in('box_id', boxIds);
+
+                if (error) {
+                    showToast(`Error fetching box details: ${error.message}`, 'error');
+                    return;
+                }
+
+                // Open a new print window for each box with its data
+                boxesData.forEach(box => {
+                    const store = box.delivery_groups.stores[0];
+                    const address = `${store.address}, ${store.city} - ${store.pincode}`;
+
+                    const params = new URLSearchParams({
+                        courierName: encodeURIComponent(shipment.couriers.name),
+                        docketNumber: encodeURIComponent(shipment.docket_number),
+                        shipmentDate: encodeURIComponent(shipment.shipment_date),
+                        boxId: encodeURIComponent(box.box_id),
+                        storeCode: encodeURIComponent(store.store_code),
+                        storeName: encodeURIComponent(store.store_name),
+                        address: encodeURIComponent(address),
+                        phone: encodeURIComponent(store.mobile),
+                        deliveryGroupId: encodeURIComponent(box.delivery_group_id),
+                        boxStatus: encodeURIComponent(box.status),
+                    });
+                    
+                    window.open(`label.html?${params.toString()}`, '_blank');
                 });
 
-                const finalY = doc.lastAutoTable.finalY || 100;
-                doc.text(`Total Boxes: ${shipment.shipment_items.length}`, 20, finalY + 10);
-                doc.text('Received By: ___________________', 20, finalY + 30);
-                doc.text('Signature: ___________________', 120, finalY + 30);
-
-                doc.save(`Manifest-${shipment.docket_number}.pdf`);
-                addLogEntry(`Manifest printed for <strong class="font-mono">${shipment.docket_number}</strong>.`);
+                addLogEntry(`Labels printed for shipment <strong class="font-mono">${shipment.docket_number}</strong>.`);
             };
+
 
             // --- RENDER FUNCTIONS ---
             const renderUnshippedBoxes = () => {
@@ -486,12 +504,12 @@
                     <ul class="max-h-40 overflow-y-auto space-y-1 pr-2 mb-4">
                         ${shipment.shipment_items.map(item => `<li class="bg-slate-100 p-1 rounded text-xs font-mono">${item.box_id}</li>`).join('')}
                     </ul>
-                    <button id="print-manifest-btn" class="w-full flex items-center justify-center space-x-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">
+                    <button id="print-labels-btn" class="w-full flex items-center justify-center space-x-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">
                         <i class="ph-bold ph-printer"></i>
-                        <span>Print Manifest</span>
+                        <span>Print Labels</span>
                     </button>
                 `;
-                document.getElementById('print-manifest-btn').addEventListener('click', () => handlePrintManifest(shipment.id));
+                document.getElementById('print-labels-btn').addEventListener('click', () => handlePrintLabels(shipment.id));
             };
             
             const renderFilters = () => {
