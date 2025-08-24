@@ -49,6 +49,7 @@
         .tab-button.active {
             border-bottom-color: #4f46e5;
             color: #4f46e5;
+            font-weight: 600;
         }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
@@ -80,9 +81,6 @@
                     <li><a href="./daily_dispatch.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-cloud-arrow-up text-xl"></i><span class="sidebar-item-text">Daily Dispatch</span></a></li>
                     <li><a href="./packing_station_final_working.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-package text-xl"></i><span class="sidebar-item-text">Packing Station</span></a></li>
                     <li><a href="./shipment_management_final.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-truck text-xl"></i><span class="sidebar-item-text">Shipments</span></a></li>
-                    <!-- Add a link to the reports page in the sidebar, it will be hidden by JS if user is not manager/admin -->
-                    <li id="reports-nav-link" class="hidden"><a href="./reports.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-chart-bar text-xl"></i><span class="sidebar-item-text">Reports</span></a></li>
-
                     <li id="reports-nav-link" class="hidden"><a href="./reports.html" class="flex items-center space-x-4 p-3 rounded-lg text-indigo-700 bg-indigo-100 font-semibold"><i class="ph-fill ph-chart-bar text-xl"></i><span class="sidebar-item-text">Reports</span></a></li>
                 </ul>
             </nav>
@@ -135,8 +133,9 @@
 
             <!-- Tabs -->
             <div class="border-b border-slate-200 mb-6">
-                <nav class="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button class="tab-button active" data-tab="exceptions">Packing Exceptions</button>
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button class="tab-button active" data-tab="dispatch">Dispatch Report</button>
+                    <button class="tab-button" data-tab="exceptions">Packing Exceptions</button>
                     <button class="tab-button" data-tab="issues">Delivery Issues</button>
                 </nav>
             </div>
@@ -149,15 +148,22 @@
                         <span>Download CSV</span>
                     </button>
                 </div>
+                <!-- Dispatch Report Tab -->
+                <div id="dispatch-tab" class="tab-content active">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                        <div id="dispatch-table-container" class="overflow-x-auto">
+                            <!-- Table will be injected here -->
+                        </div>
+                    </div>
+                </div>
                 <!-- Exceptions Tab -->
-                <div id="exceptions-tab" class="tab-content active">
+                <div id="exceptions-tab" class="tab-content">
                     <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
                         <div id="exceptions-table-container" class="overflow-x-auto">
                             <!-- Table will be injected here -->
                         </div>
                     </div>
                 </div>
-
                 <!-- Issues Tab -->
                 <div id="issues-tab" class="tab-content">
                     <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
@@ -180,7 +186,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         // --- STATE & UI ---
         let currentUser = null;
-        let activeTab = 'exceptions';
+        let activeTab = 'dispatch';
         let reportData = [];
 
         const UI = {
@@ -201,6 +207,7 @@
             filterBtn: document.getElementById('filter-btn'),
             tabs: document.querySelectorAll('.tab-button'),
             tabContents: document.querySelectorAll('.tab-content'),
+            dispatchContainer: document.getElementById('dispatch-table-container'),
             exceptionsContainer: document.getElementById('exceptions-table-container'),
             issuesContainer: document.getElementById('issues-table-container'),
             downloadCsvBtn: document.getElementById('download-csv-btn'),
@@ -215,6 +222,7 @@
         };
 
         const formatDate = (dateString) => new Date(dateString).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+        const formatDateOnly = (dateString) => new Date(dateString).toLocaleDateString('en-CA'); // YYYY-MM-DD format
 
         // --- CORE LOGIC ---
         const initializeApp = async () => {
@@ -234,13 +242,12 @@
             if (currentUser.role === 'manager' || currentUser.role === 'admin') {
                 UI.reportsPanel.classList.remove('hidden');
                 UI.reportsNavLink.classList.remove('hidden');
-                // Set default dates (past 7 days)
                 const today = new Date();
                 const pastDate = new Date();
                 pastDate.setDate(today.getDate() - 7);
                 UI.endDate.value = today.toISOString().split('T')[0];
                 UI.startDate.value = pastDate.toISOString().split('T')[0];
-                fetchReportData(); // Load initial data
+                fetchReportData();
             } else {
                 UI.accessDenied.classList.remove('hidden');
             }
@@ -254,15 +261,35 @@
                 return;
             }
 
-            renderTable(null, 'loading'); // Show loading state
+            renderTable(null, 'loading');
 
             let query;
-            if (activeTab === 'exceptions') {
+            if (activeTab === 'dispatch') {
+                // This is a complex query joining multiple tables to get all required info.
+                query = db.from('orders')
+                    .select(`
+                        gkb_order_no,
+                        order_date,
+                        customer_ref,
+                        boxes (
+                            shipment_items (
+                                shipments (
+                                    shipment_date,
+                                    docket_number,
+                                    couriers ( name )
+                                )
+                            )
+                        )
+                    `)
+                    .gte('order_date', startDate)
+                    .lte('order_date', endDate);
+
+            } else if (activeTab === 'exceptions') {
                 query = db.from('packing_exceptions')
                     .select('*, users(full_name)')
                     .gte('moved_at', startDate)
                     .lte('moved_at', `${endDate}T23:59:59.999Z`);
-            } else {
+            } else { // 'issues'
                 query = db.from('delivery_confirmations')
                     .select('*')
                     .eq('status', 'Issue Reported')
@@ -281,7 +308,11 @@
         };
 
         const renderTable = (data, state = 'loaded') => {
-            const container = (activeTab === 'exceptions') ? UI.exceptionsContainer : UI.issuesContainer;
+            let container;
+            if (activeTab === 'dispatch') container = UI.dispatchContainer;
+            else if (activeTab === 'exceptions') container = UI.exceptionsContainer;
+            else container = UI.issuesContainer;
+
             if (state === 'loading') {
                 container.innerHTML = `<div class="text-center py-16"><div class="spinner h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div><p class="mt-4">Loading report...</p></div>`;
                 return;
@@ -296,7 +327,21 @@
             }
 
             let headers, rows;
-            if (activeTab === 'exceptions') {
+            if (activeTab === 'dispatch') {
+                headers = ['Order No', 'Order Date', 'Dispatch Date', 'Customer Ref', 'Courier', 'Docket No'];
+                rows = data.map(item => {
+                    const shipmentInfo = item.boxes?.shipment_items[0]?.shipments;
+                    return `
+                    <tr class="border-b border-slate-200">
+                        <td class="p-3 font-mono">${item.gkb_order_no}</td>
+                        <td class="p-3">${formatDateOnly(item.order_date)}</td>
+                        <td class="p-3">${shipmentInfo ? formatDateOnly(shipmentInfo.shipment_date) : 'N/A'}</td>
+                        <td class="p-3">${item.customer_ref}</td>
+                        <td class="p-3">${shipmentInfo?.couriers?.name || 'N/A'}</td>
+                        <td class="p-3 font-mono">${shipmentInfo?.docket_number || 'N/A'}</td>
+                    </tr>`;
+                }).join('');
+            } else if (activeTab === 'exceptions') {
                 headers = ['Date', 'Order No', 'Original Box', 'Moved To Box', 'Moved By', 'Reason'];
                 rows = data.map(item => `
                     <tr class="border-b border-slate-200">
@@ -307,7 +352,7 @@
                         <td class="p-3">${item.users?.full_name || 'N/A'}</td>
                         <td class="p-3">${item.reason || ''}</td>
                     </tr>`).join('');
-            } else {
+            } else { // 'issues'
                 headers = ['Date', 'Order No', 'Box ID', 'Reported By', 'Mobile', 'Customer Note', 'Status'];
                 rows = data.map(item => `
                     <tr class="border-b border-slate-200">
@@ -334,13 +379,31 @@
                 return;
             }
             
-            const headers = (activeTab === 'exceptions') 
-                ? ['moved_at', 'gkb_order_no', 'original_box_id', 'moved_to_box_id', 'moved_by_user_id', 'reason']
-                : ['created_at', 'gkb_order_no', 'box_id', 'confirmed_by_name', 'confirmed_by_mobile', 'notes', 'resolution_status'];
+            let headers, dataToExport;
+            if (activeTab === 'dispatch') {
+                headers = ['gkb_order_no', 'order_date', 'dispatch_date', 'customer_ref', 'courier', 'docket_number'];
+                dataToExport = reportData.map(item => {
+                    const shipmentInfo = item.boxes?.shipment_items[0]?.shipments;
+                    return {
+                        gkb_order_no: item.gkb_order_no,
+                        order_date: item.order_date,
+                        dispatch_date: shipmentInfo ? shipmentInfo.shipment_date : '',
+                        customer_ref: item.customer_ref,
+                        courier: shipmentInfo?.couriers?.name || '',
+                        docket_number: shipmentInfo?.docket_number || ''
+                    };
+                });
+            } else if (activeTab === 'exceptions') {
+                headers = ['moved_at', 'gkb_order_no', 'original_box_id', 'moved_to_box_id', 'moved_by_user', 'reason'];
+                 dataToExport = reportData.map(item => ({...item, moved_by_user: item.users?.full_name || 'N/A' }));
+            } else { // issues
+                headers = ['created_at', 'gkb_order_no', 'box_id', 'confirmed_by_name', 'confirmed_by_mobile', 'notes', 'resolution_status'];
+                dataToExport = reportData;
+            }
             
             const csvRows = [
                 headers.join(','),
-                ...reportData.map(row => headers.map(header => {
+                ...dataToExport.map(row => headers.map(header => {
                     let val = row[header] === null || row[header] === undefined ? '' : `"${String(row[header]).replace(/"/g, '""')}"`;
                     return val;
                 }).join(','))
