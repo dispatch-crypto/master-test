@@ -5,16 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Smart Dispatch System</title>
     
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
+    <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
+    <!-- Phosphor Icons for a clean, modern look -->
     <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
 
+    <!-- Custom Styles -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -58,6 +63,7 @@
 <body class="antialiased text-slate-800">
 
 <div class="flex min-h-screen">
+    <!-- Sidebar -->
     <aside id="sidebar" class="sidebar bg-white shadow-xl p-4 flex flex-col justify-between">
         <div>
             <div class="flex items-center justify-between mb-8 p-2">
@@ -95,10 +101,12 @@
         </div>
     </aside>
 
+    <!-- Main Content -->
     <main class="flex-1 p-6 lg:p-8 overflow-auto">
         <h1 class="text-3xl font-extrabold text-slate-900 mb-2">Dashboard</h1>
         <p class="text-slate-500 mb-8">A real-time overview of your dispatch operations.</p>
 
+        <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 fade-in"><p class="text-4xl font-extrabold text-indigo-600" id="summary-pending-boxes">--</p><p class="text-sm font-medium text-slate-500 mt-1">Boxes Pending Packing</p></div>
             <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 fade-in" style="animation-delay: 100ms;"><p class="text-4xl font-extrabold text-sky-600" id="summary-undispatched-shipments">--</p><p class="text-sm font-medium text-slate-500 mt-1">Undispatched Shipments</p></div>
@@ -106,13 +114,16 @@
             <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 fade-in" style="animation-delay: 300ms;"><p class="text-4xl font-extrabold text-rose-600" id="summary-delivery-issues">--</p><p class="text-sm font-medium text-slate-500 mt-1">Pending Delivery Issues</p></div>
         </div>
 
+        <!-- Detailed Lists -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Recent Packing Exceptions -->
             <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 400ms;">
                 <h3 class="text-xl font-bold text-slate-800 mb-4">Recent Manual Order Moves</h3>
                 <div id="packing-exceptions-list" class="space-y-3 max-h-80 overflow-y-auto pr-2">
                     <p class="text-center text-slate-500 py-12" id="exceptions-placeholder">Loading...</p>
                 </div>
             </div>
+            <!-- Recent Delivery Issues -->
             <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 500ms;">
                 <h3 class="text-xl font-bold text-slate-800 mb-4">Pending Delivery Issues</h3>
                 <div id="delivery-issues-list" class="space-y-3 max-h-80 overflow-y-auto pr-2">
@@ -123,6 +134,7 @@
     </main>
 </div>
 
+<!-- Issue Management Modal -->
 <div id="issue-modal" class="modal fixed inset-0 bg-black/60 z-30 items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl">
         <div class="flex justify-between items-center mb-4">
@@ -131,6 +143,7 @@
         </div>
         
         <div id="issue-modal-content" class="space-y-4">
+            <!-- Content will be loaded here by JS -->
             <div class="text-center py-8">
                 <div class="h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full spinner mx-auto"></div>
                 <p class="mt-3 text-slate-500">Loading issue details...</p>
@@ -224,12 +237,13 @@
                 const [pendingBoxes, undispatchedShipments, packingExceptions, deliveryIssues] = await Promise.all([
                     db.from('boxes').select('box_id', { count: 'exact' }).in('status', ['Pending', 'Packing']),
                     db.from('shipments').select('id', { count: 'exact' }).in('status', ['Created', 'Dispatched']),
-                    db.from('packing_exceptions').select('*').order('moved_at', { ascending: false }).limit(10),
+                    db.from('packing_exceptions').select('*, users(full_name)').order('moved_at', { ascending: false }).limit(10),
                     // UPGRADE: Only fetch issues that are not resolved or closed
                     db.from('delivery_confirmations')
                       .select('*')
                       .eq('status', 'Issue Reported')
-                      .not('resolution_status', 'in', '("Resolved", "Closed")')
+                      // *** FIX: Corrected the syntax for the .not() filter ***
+                      .not('resolution_status', 'in', '(Resolved,Closed)')
                       .order('created_at', { ascending: false })
                 ]);
 
@@ -248,8 +262,8 @@
 
             } catch (error) {
                 console.error("Failed to load dashboard data:", error);
-                UI.lists.issuesPlaceholder.textContent = "Failed to load data.";
-                UI.lists.exceptionsPlaceholder.textContent = "Failed to load data.";
+                UI.lists.issuesPlaceholder.textContent = "Failed to load data. Please refresh.";
+                UI.lists.exceptionsPlaceholder.textContent = "Failed to load data. Please refresh.";
             }
         };
 
@@ -270,7 +284,7 @@
                             <strong class="font-mono">${ex.moved_to_box_id}</strong>.
                         </p>
                         <p class="text-xs text-slate-500 mt-1">
-                            ${new Date(ex.moved_at).toLocaleString()} by ${ex.moved_by_user_id || 'Unknown'}
+                            ${new Date(ex.moved_at).toLocaleString()} by ${ex.users?.full_name || 'Unknown User'}
                         </p>
                     </div>
                 `).join('');
