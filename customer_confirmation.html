@@ -31,30 +31,43 @@
         [data-theme="dark"] .bg-white { background-color: #1e293b; }
         [data-theme="dark"] .text-slate-800 { color: #f1f5f9; }
         [data-theme="dark"] .text-slate-900 { color: #ffffff; }
+        /* FIX: Corrected text colors for dark mode */
+        [data-theme="dark"] .text-slate-700 { color: #cbd5e1; }
         [data-theme="dark"] .text-slate-600 { color: #94a3b8; }
         [data-theme="dark"] .text-slate-500 { color: #64748b; }
         [data-theme="dark"] .border-slate-200 { border-color: #334155; }
         [data-theme="dark"] .bg-slate-50 { background-color: #334155; }
         [data-theme="dark"] .bg-slate-100 { background-color: #475569; }
         [data-theme="dark"] .text-indigo-600 { color: #a5b4fc; }
+        /* FIX: Add styles for form inputs in dark mode */
+        [data-theme="dark"] input[type="text"], 
+        [data-theme="dark"] input[type="tel"], 
+        [data-theme="dark"] textarea {
+            background-color: #334155;
+            border-color: #475569;
+            color: #f1f5f9;
+        }
+        [data-theme="dark"] input::placeholder, [data-theme="dark"] textarea::placeholder {
+            color: #64748b;
+        }
 
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
         .content-fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        .checkbox-item input:checked ~ div {
+        .checkbox-item input:checked ~ label {
             border-color: #4f46e5;
             background-color: #eef2ff;
         }
-        [data-theme="dark"] .checkbox-item input:checked ~ div {
+        [data-theme="dark"] .checkbox-item input:checked ~ label {
             background-color: #3730a3;
         }
-        .checkbox-item input:checked ~ div span {
+        .checkbox-item input:checked ~ label span {
             text-decoration: line-through;
             color: #64748b;
         }
-        [data-theme="dark"] .checkbox-item input:checked ~ div span {
+        [data-theme="dark"] .checkbox-item input:checked ~ label span {
             color: #94a3b8;
         }
     </style>
@@ -133,12 +146,16 @@
                 </div>
 
                 <!-- Input Fields -->
-                <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="name-input" class="block text-sm font-medium text-slate-700">Received By (Your Name)</label>
-                        <input type="text" id="name-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Enter your full name">
+                <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-1">
+                        <label for="name-input" class="block text-sm font-medium text-slate-700">Received By (Name)</label>
+                        <input type="text" id="name-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Your full name">
                     </div>
-                    <div>
+                    <div class="md:col-span-1">
+                        <label for="mobile-input" class="block text-sm font-medium text-slate-700">Mobile No.</label>
+                        <input type="tel" id="mobile-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Your mobile number">
+                    </div>
+                    <div class="md:col-span-1">
                         <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Optional)</label>
                         <textarea id="notes-input" rows="1" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g., Box was damaged..."></textarea>
                     </div>
@@ -180,6 +197,7 @@
                 orderList: document.getElementById('order-list'),
                 selectAllBtn: document.getElementById('select-all-btn'),
                 nameInput: document.getElementById('name-input'),
+                mobileInput: document.getElementById('mobile-input'),
                 notesInput: document.getElementById('notes-input'),
                 confirmBtn: document.getElementById('confirm-btn'),
                 reportIssueBtn: document.getElementById('report-issue-btn'),
@@ -204,10 +222,16 @@
                 const confirmedOrders = Array.from(UI.orderList.querySelectorAll('input:checked')).map(input => input.value);
                 const notes = UI.notesInput.value.trim();
                 const confirmedByName = UI.nameInput.value.trim();
+                const confirmedByMobile = UI.mobileInput.value.trim();
 
                 if (!confirmedByName) {
                     alert('Please enter your name in the "Received By" field.');
                     UI.nameInput.focus();
+                    return;
+                }
+                if (!confirmedByMobile) {
+                    alert('Please enter your mobile number.');
+                    UI.mobileInput.focus();
                     return;
                 }
 
@@ -218,11 +242,27 @@
                 
                 showState('loadingState');
 
+                // *** FIX: Fetch the shipment_id before inserting the confirmation ***
+                const { data: shipmentItem, error: itemError } = await db.from('shipment_items')
+                    .select('shipment_id')
+                    .eq('box_id', boxData.box_id)
+                    .limit(1)
+                    .single();
+
+                if (itemError || !shipmentItem) {
+                    showState('errorState');
+                    UI.errorMessage.textContent = 'This box is not part of a valid shipment.';
+                    console.error("Shipment item lookup error:", itemError);
+                    return;
+                }
+
                 const allOrders = boxData.orders.map(o => o.gkb_order_no);
                 const confirmationData = allOrders.map(orderNo => {
-                    const orderStatus = confirmedOrders.includes(orderNo) ? 'Received' : (status === 'Received' ? 'Received' : 'Issue Reported');
+                    const orderStatus = confirmedOrders.includes(orderNo) ? 'Received' : 'Issue Reported';
                     return {
+                        shipment_id: shipmentItem.shipment_id, // Include the fetched shipment_id
                         confirmed_by_name: confirmedByName,
+                        confirmed_by_mobile: confirmedByMobile,
                         status: orderStatus,
                         notes: notes,
                         gkb_order_no: orderNo,
@@ -265,8 +305,8 @@
 
                 UI.orderList.innerHTML = data.orders.map(order => 
                     `<li class="checkbox-item">
+                        <input type="checkbox" id="${order.gkb_order_no}" value="${order.gkb_order_no}" class="sr-only">
                         <label for="${order.gkb_order_no}" class="flex items-center p-3 rounded-lg transition-all border-2 border-transparent cursor-pointer bg-slate-100">
-                            <input type="checkbox" id="${order.gkb_order_no}" value="${order.gkb_order_no}" class="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded sr-only">
                             <div class="flex-grow flex justify-between items-center">
                                 <span class="font-mono text-sm text-slate-700">${order.gkb_order_no}</span>
                                 <span class="text-xs text-slate-500 ml-2">(Ref: ${order.customer_ref})</span>
@@ -290,7 +330,8 @@
             UI.reportIssueBtn.addEventListener('click', () => submitConfirmation('Issue Reported'));
             UI.selectAllBtn.addEventListener('click', () => {
                 const checkboxes = UI.orderList.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(cb => cb.checked = true);
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                checkboxes.forEach(cb => cb.checked = !allChecked);
             });
 
             // Auto-detect and set theme
