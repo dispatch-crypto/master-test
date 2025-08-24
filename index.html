@@ -46,9 +46,6 @@
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spinner { animation: spin 1s linear infinite; }
     </style>
 </head>
 <body class="antialiased text-slate-800">
@@ -74,6 +71,7 @@
                     <li><a href="./daily_dispatch.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-cloud-arrow-up text-xl"></i><span class="sidebar-item-text">Daily Dispatch</span></a></li>
                     <li><a href="./packing_station_final_working.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-package text-xl"></i><span class="sidebar-item-text">Packing Station</span></a></li>
                     <li><a href="./shipment_management_final.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-truck text-xl"></i><span class="sidebar-item-text">Shipments</span></a></li>
+                    <li id="admin-nav-link" class="hidden"><a href="./admin.html" class="flex items-center space-x-4 p-3 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold"><i class="ph-fill ph-user-gear text-xl"></i><span class="sidebar-item-text">Admin Panel</span></a></li>
                 </ul>
             </nav>
         </div>
@@ -105,17 +103,32 @@
             <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-200 fade-in" style="animation-delay: 300ms;"><p class="text-4xl font-extrabold text-rose-600" id="summary-delivery-issues">--</p><p class="text-sm font-medium text-slate-500 mt-1">Recent Delivery Issues</p></div>
         </div>
 
+        <!-- Manager Tools Section -->
+        <div id="manager-tools" class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-8 fade-in" style="animation-delay: 400ms;">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Manager Tools</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <a href="./reports.html" class="bg-slate-50 hover:bg-slate-100 p-4 rounded-lg flex items-center space-x-4">
+                    <i class="ph-bold ph-chart-bar text-3xl text-indigo-600"></i>
+                    <div>
+                        <p class="font-semibold text-slate-800">View Reports</p>
+                        <p class="text-sm text-slate-500">Analyze exceptions and issues.</p>
+                    </div>
+                </a>
+                <!-- Placeholder for future tools -->
+            </div>
+        </div>
+
         <!-- Detailed Lists -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <!-- Recent Packing Exceptions -->
-            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 400ms;">
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 500ms;">
                 <h3 class="text-xl font-bold text-slate-800 mb-4">Recent Manual Order Moves</h3>
                 <div id="packing-exceptions-list" class="space-y-3 max-h-80 overflow-y-auto pr-2">
                     <p class="text-center text-slate-500 py-12" id="exceptions-placeholder">Loading...</p>
                 </div>
             </div>
             <!-- Recent Delivery Issues -->
-            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 500ms;">
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 fade-in" style="animation-delay: 600ms;">
                 <h3 class="text-xl font-bold text-slate-800 mb-4">Recent Delivery Issues Reported</h3>
                 <div id="delivery-issues-list" class="space-y-3 max-h-80 overflow-y-auto pr-2">
                     <p class="text-center text-slate-500 py-12" id="issues-placeholder">Loading...</p>
@@ -126,14 +139,12 @@
 </div>
     
 <script type="module">
-    // Import credentials from the central config file
     import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     document.addEventListener('DOMContentLoaded', () => {
-        // --- STATE & UI ---
         let currentUser = null;
         const UI = {
             sidebar: document.getElementById('sidebar'),
@@ -144,6 +155,8 @@
             userInitials: document.getElementById('user-initials'),
             userRoleDisplay: document.getElementById('user-role-display'),
             logoutBtn: document.getElementById('logout-btn'),
+            adminNavLink: document.getElementById('admin-nav-link'),
+            managerTools: document.getElementById('manager-tools'),
             summary: {
                 pendingBoxes: document.getElementById('summary-pending-boxes'),
                 undispatchedShipments: document.getElementById('summary-undispatched-shipments'),
@@ -158,12 +171,7 @@
             }
         };
 
-        // --- UTILS ---
-        const redirectTo = (page) => {
-            const currentPath = window.location.pathname;
-            const newPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) + page;
-            window.location.href = new URL(newPath, window.location.origin).href;
-        };
+        const redirectTo = (page) => { window.location.href = `./${page}`; };
 
         const setTheme = (theme) => {
             document.documentElement.setAttribute('data-theme', theme);
@@ -172,7 +180,6 @@
             else { UI.themeCircle.style.transform = 'translateX(0)'; }
         };
 
-        // --- DATA FETCHING ---
         const fetchDashboardData = async () => {
             try {
                 const [pendingBoxes, undispatchedShipments, packingExceptions, deliveryIssues] = await Promise.all([
@@ -181,11 +188,6 @@
                     db.from('packing_exceptions').select('*').order('moved_at', { ascending: false }).limit(10),
                     db.from('delivery_confirmations').select('*').eq('status', 'Issue Reported').order('created_at', { ascending: false }).limit(10)
                 ]);
-
-                if (pendingBoxes.error) throw new Error(`Pending Boxes: ${pendingBoxes.error.message}`);
-                if (undispatchedShipments.error) throw new Error(`Undispatched Shipments: ${undispatchedShipments.error.message}`);
-                if (packingExceptions.error) throw new Error(`Packing Exceptions: ${packingExceptions.error.message}`);
-                if (deliveryIssues.error) throw new Error(`Delivery Issues: ${deliveryIssues.error.message}`);
 
                 renderDashboard({
                     pendingBoxesCount: pendingBoxes.count,
@@ -196,54 +198,36 @@
 
             } catch (error) {
                 console.error("Failed to load dashboard data:", error);
-                // You could add a UI element to show a generic error message here
             }
         };
 
-        // --- RENDER FUNCTIONS ---
         const renderDashboard = (data) => {
-            // Render summary cards
             UI.summary.pendingBoxes.textContent = data.pendingBoxesCount ?? 0;
             UI.summary.undispatchedShipments.textContent = data.undispatchedShipmentsCount ?? 0;
             UI.summary.packingExceptions.textContent = data.packingExceptionsData?.length ?? 0;
             UI.summary.deliveryIssues.textContent = data.deliveryIssuesData?.length ?? 0;
 
-            // Render packing exceptions list
             if (data.packingExceptionsData && data.packingExceptionsData.length > 0) {
                 UI.lists.packingExceptions.innerHTML = data.packingExceptionsData.map(ex => `
                     <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                        <p class="text-sm text-slate-800">
-                            Order <strong class="font-mono">${ex.gkb_order_no}</strong> moved from 
-                            <strong class="font-mono">${ex.original_box_id}</strong> to 
-                            <strong class="font-mono">${ex.moved_to_box_id}</strong>.
-                        </p>
-                        <p class="text-xs text-slate-500 mt-1">
-                            ${new Date(ex.moved_at).toLocaleString()}
-                        </p>
-                    </div>
-                `).join('');
+                        <p class="text-sm text-slate-800">Order <strong class="font-mono">${ex.gkb_order_no}</strong> moved from <strong class="font-mono">${ex.original_box_id}</strong> to <strong class="font-mono">${ex.moved_to_box_id}</strong>.</p>
+                        <p class="text-xs text-slate-500 mt-1">${new Date(ex.moved_at).toLocaleString()}</p>
+                    </div>`).join('');
             } else {
                 UI.lists.exceptionsPlaceholder.textContent = "No recent manual moves.";
             }
 
-            // Render delivery issues list
             if (data.deliveryIssuesData && data.deliveryIssuesData.length > 0) {
                 UI.lists.deliveryIssues.innerHTML = data.deliveryIssuesData.map(issue => `
                     <div class="p-3 bg-rose-50 rounded-lg border border-rose-200">
-                        <p class="text-sm text-slate-800">
-                            Issue reported for order <strong class="font-mono">${issue.gkb_order_no || 'N/A'}</strong>.
-                        </p>
-                        <p class="text-xs text-slate-500 mt-1">
-                            Note: ${issue.notes || 'No notes provided.'}
-                        </p>
-                    </div>
-                `).join('');
+                        <p class="text-sm text-slate-800">Issue reported for order <strong class="font-mono">${issue.gkb_order_no || 'N/A'}</strong>.</p>
+                        <p class="text-xs text-slate-500 mt-1">Note: ${issue.notes || 'No notes provided.'}</p>
+                    </div>`).join('');
             } else {
                 UI.lists.issuesPlaceholder.textContent = "No recent delivery issues.";
             }
         };
 
-        // --- INITIALIZATION ---
         const initializeApp = async () => {
             const { data: { session } } = await db.auth.getSession();
             if (!session) { redirectTo('login.html'); return; }
@@ -251,41 +235,27 @@
             const { data: { user } } = await db.auth.getUser();
             const { data: userProfile, error } = await db.from('users').select('full_name, role').eq('id', user.id).single();
             
-            if (error) {
-                currentUser = { id: user.id, name: user.email, role: 'packer' };
-            } else {
-                currentUser = { id: user.id, name: userProfile.full_name, role: userProfile.role };
-                // ADD THIS SECURITY CHECK:
-                if (currentUser.role === 'packer') {
-                    // If the user is a packer, redirect them to their primary workspace.
+            currentUser = error ? { id: user.id, name: user.email, role: 'packer' } : { id: user.id, name: userProfile.full_name, role: userProfile.role };
+            
+            // Security check
+            if (currentUser.role === 'packer') {
                 redirectTo('packing_station_final_working.html');
-                return; // Stop the rest of the dashboard from loading
+                return;
             }
-            }
+
             UI.userDisplay.textContent = currentUser.name;
             UI.userRoleDisplay.textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
             UI.userInitials.textContent = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
+            
+            if (currentUser.role === 'admin') UI.adminNavLink.classList.remove('hidden');
 
-            // Fetch and render the main dashboard content
             fetchDashboardData();
         };
 
-        // --- EVENT LISTENERS ---
-        UI.sidebarToggle.addEventListener('click', () => {
-            UI.sidebar.classList.toggle('collapsed');
-            UI.sidebarToggle.querySelector('i').classList.toggle('ph-caret-right');
-            UI.sidebarToggle.querySelector('i').classList.toggle('ph-caret-left');
-        });
-        UI.themeToggle.addEventListener('click', () => {
-            const newTheme = (localStorage.getItem('theme') || 'light') === 'light' ? 'dark' : 'light';
-            setTheme(newTheme);
-        });
-        UI.logoutBtn.addEventListener('click', async () => {
-            await db.auth.signOut();
-            redirectTo('login.html');
-        });
+        UI.sidebarToggle.addEventListener('click', () => UI.sidebar.classList.toggle('collapsed'));
+        UI.themeToggle.addEventListener('click', () => setTheme((localStorage.getItem('theme') || 'light') === 'light' ? 'dark' : 'light'));
+        UI.logoutBtn.addEventListener('click', async () => { await db.auth.signOut(); redirectTo('login.html'); });
 
-        // Start the application
         setTheme(localStorage.getItem('theme') || 'light');
         initializeApp();
     });
