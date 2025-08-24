@@ -121,7 +121,7 @@
                 <i class="ph-bold ph-info text-6xl text-sky-500 mx-auto"></i>
                 <p class="mt-4 text-2xl font-semibold text-slate-800">Confirmation Already Submitted</p>
                 <p class="text-slate-500 mt-2">This delivery was already processed.</p>
-                <div id="confirmation-details" class="mt-4 text-sm bg-slate-50 p-4 rounded-lg"></div>
+                <div id="confirmation-details" class="mt-4 text-sm bg-slate-50 p-4 rounded-lg text-left"></div>
             </div>
 
             <!-- Confirmation View -->
@@ -170,7 +170,7 @@
                         <input type="tel" id="mobile-input" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="10-digit mobile number">
                     </div>
                     <div class="md:col-span-1">
-                        <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Optional)</label>
+                        <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Required if reporting issue)</label>
                         <textarea id="notes-input" rows="1" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g., Box was damaged..."></textarea>
                     </div>
                 </div>
@@ -257,6 +257,7 @@
                      return;
                 }
 
+                // FIX: Require notes when reporting an issue
                 if (status === 'Issue Reported' && !notes) {
                     alert('Please describe the issue in the "Notes" field before reporting.');
                     UI.notesInput.focus();
