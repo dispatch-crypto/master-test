@@ -37,7 +37,7 @@
         [data-theme="dark"] .bg-slate-50 { background-color: #334155; }
         [data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #475569; }
         [data-theme="dark"] .text-indigo-700 { color: #a5b4fc; }
-        [data-theme="dark"] input[type="date"] { background-color: #334155; border-color: #475569; color-scheme: dark; }
+        [data-theme="dark"] input, [data-theme="dark"] select { background-color: #334155; border-color: #475569; color-scheme: dark; }
         [data-theme="dark"] table th { background-color: #334155; }
         [data-theme="dark"] table tr:nth-child(even) { background-color: #293548; }
 
@@ -115,7 +115,7 @@
             
             <!-- Filters -->
             <div class="bg-white p-4 rounded-2xl shadow-lg border border-slate-200 mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                     <div>
                         <label for="start-date" class="block text-sm font-medium text-slate-700">Start Date</label>
                         <input type="date" id="start-date" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
@@ -124,7 +124,11 @@
                         <label for="end-date" class="block text-sm font-medium text-slate-700">End Date</label>
                         <input type="date" id="end-date" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
                     </div>
-                    <button id="filter-btn" class="md:col-start-4 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 flex items-center justify-center space-x-2">
+                    <div>
+                        <label for="courier-filter" class="block text-sm font-medium text-slate-700">Courier</label>
+                        <select id="courier-filter" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></select>
+                    </div>
+                    <button id="filter-btn" class="md:col-span-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 flex items-center justify-center space-x-2">
                         <i class="ph-bold ph-funnel"></i>
                         <span>Apply Filters</span>
                     </button>
@@ -148,30 +152,14 @@
                         <span>Download CSV</span>
                     </button>
                 </div>
-                <!-- Dispatch Report Tab -->
-                <div id="dispatch-tab" class="tab-content active">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
-                        <div id="dispatch-table-container" class="overflow-x-auto">
-                            <!-- Table will be injected here -->
-                        </div>
-                    </div>
-                </div>
-                <!-- Exceptions Tab -->
-                <div id="exceptions-tab" class="tab-content">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
-                        <div id="exceptions-table-container" class="overflow-x-auto">
-                            <!-- Table will be injected here -->
-                        </div>
-                    </div>
-                </div>
-                <!-- Issues Tab -->
-                <div id="issues-tab" class="tab-content">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
-                         <div id="issues-table-container" class="overflow-x-auto">
-                            <!-- Table will be injected here -->
-                        </div>
-                    </div>
-                </div>
+
+                <!-- Summary Cards -->
+                <div id="summary-cards" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"></div>
+
+                <!-- Tables -->
+                <div id="dispatch-tab" class="tab-content active"><div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200"><div id="dispatch-table-container" class="overflow-x-auto"></div></div></div>
+                <div id="exceptions-tab" class="tab-content"><div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200"><div id="exceptions-table-container" class="overflow-x-auto"></div></div></div>
+                <div id="issues-tab" class="tab-content"><div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200"><div id="issues-table-container" class="overflow-x-auto"></div></div></div>
             </div>
         </div>
     </main>
@@ -188,6 +176,7 @@
         let currentUser = null;
         let activeTab = 'dispatch';
         let reportData = [];
+        let couriers = [];
 
         const UI = {
             sidebar: document.getElementById('sidebar'),
@@ -199,14 +188,15 @@
             userRoleDisplay: document.getElementById('user-role-display'),
             logoutBtn: document.getElementById('logout-btn'),
             reportsNavLink: document.getElementById('reports-nav-link'),
-            mainContent: document.getElementById('main-content'),
             accessDenied: document.getElementById('access-denied'),
             reportsPanel: document.getElementById('reports-panel'),
             startDate: document.getElementById('start-date'),
             endDate: document.getElementById('end-date'),
+            courierFilter: document.getElementById('courier-filter'),
             filterBtn: document.getElementById('filter-btn'),
             tabs: document.querySelectorAll('.tab-button'),
             tabContents: document.querySelectorAll('.tab-content'),
+            summaryCards: document.getElementById('summary-cards'),
             dispatchContainer: document.getElementById('dispatch-table-container'),
             exceptionsContainer: document.getElementById('exceptions-table-container'),
             issuesContainer: document.getElementById('issues-table-container'),
@@ -222,7 +212,7 @@
         };
 
         const formatDate = (dateString) => new Date(dateString).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
-        const formatDateOnly = (dateString) => new Date(dateString).toLocaleDateString('en-CA'); // YYYY-MM-DD format
+        const formatDateOnly = (dateString) => dateString ? new Date(dateString).toLocaleDateString('en-CA') : 'N/A';
 
         // --- CORE LOGIC ---
         const initializeApp = async () => {
@@ -238,7 +228,6 @@
             UI.userRoleDisplay.textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
             UI.userInitials.textContent = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
 
-            // Security Check
             if (currentUser.role === 'manager' || currentUser.role === 'admin') {
                 UI.reportsPanel.classList.remove('hidden');
                 UI.reportsNavLink.classList.remove('hidden');
@@ -247,54 +236,58 @@
                 pastDate.setDate(today.getDate() - 7);
                 UI.endDate.value = today.toISOString().split('T')[0];
                 UI.startDate.value = pastDate.toISOString().split('T')[0];
+                await loadCouriers();
                 fetchReportData();
             } else {
                 UI.accessDenied.classList.remove('hidden');
             }
         };
 
+        const loadCouriers = async () => {
+            const { data, error } = await db.from('couriers').select('id, name');
+            if (error) {
+                console.error("Failed to load couriers", error);
+                return;
+            }
+            couriers = data;
+            UI.courierFilter.innerHTML = '<option value="all">All Couriers</option>' + couriers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        };
+
         const fetchReportData = async () => {
             const startDate = UI.startDate.value;
             const endDate = UI.endDate.value;
+            const courierId = UI.courierFilter.value;
+
             if (!startDate || !endDate) {
                 alert('Please select both a start and end date.');
                 return;
             }
 
             renderTable(null, 'loading');
+            UI.summaryCards.innerHTML = '';
 
             let query;
             if (activeTab === 'dispatch') {
-                // This is a complex query joining multiple tables to get all required info.
-                query = db.from('orders')
-                    .select(`
-                        gkb_order_no,
-                        order_date,
-                        customer_ref,
-                        boxes (
-                            shipment_items (
-                                shipments (
-                                    shipment_date,
-                                    docket_number,
-                                    couriers ( name )
-                                )
-                            )
-                        )
-                    `)
+                query = db.from('dispatch_report_view').select('*')
                     .gte('order_date', startDate)
                     .lte('order_date', endDate);
+                if (courierId !== 'all') query = query.eq('courier_id', courierId);
 
             } else if (activeTab === 'exceptions') {
-                query = db.from('packing_exceptions')
-                    .select('*, users(full_name)')
-                    .gte('moved_at', startDate)
-                    .lte('moved_at', `${endDate}T23:59:59.999Z`);
+                query = db.from('packing_exceptions').select('*, users(full_name)').gte('moved_at', startDate).lte('moved_at', `${endDate}T23:59:59.999Z`);
+                // Courier filter for exceptions is complex, skipping for now to avoid performance issues.
+            
             } else { // 'issues'
-                query = db.from('delivery_confirmations')
-                    .select('*')
-                    .eq('status', 'Issue Reported')
-                    .gte('created_at', startDate)
-                    .lte('created_at', `${endDate}T23:59:59.999Z`);
+                // This requires a join, so we use an RPC function for filtering by courier
+                if (courierId !== 'all') {
+                    query = db.rpc('get_issues_by_courier', {
+                        start_date: startDate,
+                        end_date: endDate,
+                        courier_id_filter: courierId
+                    });
+                } else {
+                     query = db.from('delivery_confirmations').select('*').eq('status', 'Issue Reported').gte('created_at', startDate).lte('created_at', `${endDate}T23:59:59.999Z`);
+                }
             }
 
             const { data, error } = await query;
@@ -304,7 +297,24 @@
                 return;
             }
             reportData = data;
+            renderSummary(data);
             renderTable(data);
+        };
+        
+        const renderSummary = (data) => {
+            let cards = '';
+            if (activeTab === 'dispatch') {
+                const dispatchedOrders = data.filter(d => d.dispatch_date).length;
+                const uniqueCouriers = new Set(data.map(d => d.courier_name).filter(Boolean)).size;
+                cards = `
+                    <div class="bg-white p-4 rounded-xl shadow-md border"><p class="text-2xl font-bold text-indigo-600">${data.length}</p><p class="text-sm font-medium text-slate-500">Total Orders</p></div>
+                    <div class="bg-white p-4 rounded-xl shadow-md border"><p class="text-2xl font-bold text-indigo-600">${dispatchedOrders}</p><p class="text-sm font-medium text-slate-500">Dispatched Orders</p></div>
+                    <div class="bg-white p-4 rounded-xl shadow-md border"><p class="text-2xl font-bold text-indigo-600">${uniqueCouriers}</p><p class="text-sm font-medium text-slate-500">Couriers Used</p></div>
+                `;
+            } else if (activeTab === 'exceptions' || activeTab === 'issues') {
+                cards = `<div class="bg-white p-4 rounded-xl shadow-md border"><p class="text-2xl font-bold text-rose-600">${data.length}</p><p class="text-sm font-medium text-slate-500">Total Records Found</p></div>`;
+            }
+            UI.summaryCards.innerHTML = cards;
         };
 
         const renderTable = (data, state = 'loaded') => {
@@ -329,18 +339,15 @@
             let headers, rows;
             if (activeTab === 'dispatch') {
                 headers = ['Order No', 'Order Date', 'Dispatch Date', 'Customer Ref', 'Courier', 'Docket No'];
-                rows = data.map(item => {
-                    const shipmentInfo = item.boxes?.shipment_items[0]?.shipments;
-                    return `
+                rows = data.map(item => `
                     <tr class="border-b border-slate-200">
                         <td class="p-3 font-mono">${item.gkb_order_no}</td>
                         <td class="p-3">${formatDateOnly(item.order_date)}</td>
-                        <td class="p-3">${shipmentInfo ? formatDateOnly(shipmentInfo.shipment_date) : 'N/A'}</td>
+                        <td class="p-3">${formatDateOnly(item.dispatch_date)}</td>
                         <td class="p-3">${item.customer_ref}</td>
-                        <td class="p-3">${shipmentInfo?.couriers?.name || 'N/A'}</td>
-                        <td class="p-3 font-mono">${shipmentInfo?.docket_number || 'N/A'}</td>
-                    </tr>`;
-                }).join('');
+                        <td class="p-3">${item.courier_name || 'N/A'}</td>
+                        <td class="p-3 font-mono">${item.docket_number || 'N/A'}</td>
+                    </tr>`).join('');
             } else if (activeTab === 'exceptions') {
                 headers = ['Date', 'Order No', 'Original Box', 'Moved To Box', 'Moved By', 'Reason'];
                 rows = data.map(item => `
@@ -374,25 +381,12 @@
         };
         
         const downloadCsv = () => {
-            if (reportData.length === 0) {
-                alert("No data to export.");
-                return;
-            }
+            if (reportData.length === 0) { alert("No data to export."); return; }
             
             let headers, dataToExport;
             if (activeTab === 'dispatch') {
-                headers = ['gkb_order_no', 'order_date', 'dispatch_date', 'customer_ref', 'courier', 'docket_number'];
-                dataToExport = reportData.map(item => {
-                    const shipmentInfo = item.boxes?.shipment_items[0]?.shipments;
-                    return {
-                        gkb_order_no: item.gkb_order_no,
-                        order_date: item.order_date,
-                        dispatch_date: shipmentInfo ? shipmentInfo.shipment_date : '',
-                        customer_ref: item.customer_ref,
-                        courier: shipmentInfo?.couriers?.name || '',
-                        docket_number: shipmentInfo?.docket_number || ''
-                    };
-                });
+                headers = ['gkb_order_no', 'order_date', 'dispatch_date', 'customer_ref', 'courier_name', 'docket_number'];
+                dataToExport = reportData;
             } else if (activeTab === 'exceptions') {
                 headers = ['moved_at', 'gkb_order_no', 'original_box_id', 'moved_to_box_id', 'moved_by_user', 'reason'];
                  dataToExport = reportData.map(item => ({...item, moved_by_user: item.users?.full_name || 'N/A' }));
