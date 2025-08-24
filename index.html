@@ -318,14 +318,14 @@
 </div>
 
 <script type="module">
-    document.addEventListener('DOMContentLoaded', () => {
-        // --- UPGRADE: Import credentials from the central config file
-        import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+    // *** FIX: Reverted to hardcoded credentials to fix local file module error. ***
+    const SUPABASE_URL = 'https://nizucjvifkzcjistbleu.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5penVjanZpZmt6Y2ppc3RibGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwMzg1NzYsImV4cCI6MjA3MTYxNDU3Nn0.D2AOafbw8ehjxJmWyxTPxJL1k-MTQCAvvqwoknCIZW8';
+    
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // --- CONFIGURATION ---
-        const { createClient } = supabase;
-        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
+    document.addEventListener('DOMContentLoaded', () => {
         // --- STATE MANAGEMENT ---
         let currentUser = null;
         let storeMaster = new Map();
@@ -580,7 +580,9 @@
                 if (existingBox) {
                     // 2a. An existing box was found, so we use its ID
                     assignedBoxId = existingBox.box_id;
-                    updatedBoxCount++;
+                    if (!planPreview.some(p => p.boxId === assignedBoxId)) {
+                        updatedBoxCount++;
+                    }
                 } else {
                     // 2b. No existing box found, so we generate a new ID
                     const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
@@ -612,10 +614,12 @@
                     });
                 });
                 
-                // Add to plan preview for the UI
-                const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
-                const boxType = uniqueStoreCodes.length > 1 ? 'BULK' : 'BEN';
-                planPreview.push({ boxId: assignedBoxId, boxType, stores: uniqueStoreCodes.join(', ') });
+                // Add to plan preview for the UI, ensuring no duplicates
+                if (!planPreview.some(p => p.boxId === assignedBoxId)) {
+                    const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
+                    const boxType = uniqueStoreCodes.length > 1 ? 'BULK' : 'BEN';
+                    planPreview.push({ boxId: assignedBoxId, boxType, stores: uniqueStoreCodes.join(', ') });
+                }
             }
             // UPGRADE LOGIC ENDS HERE
 
@@ -635,7 +639,7 @@
 
         const renderReviewUI = (planPreview) => {
             document.getElementById('summary-orders').textContent = processedData.orders.length;
-            document.getElementById('summary-total-boxes').textContent = processedData.boxes.length + processedData.updatedBoxCount;
+            document.getElementById('summary-total-boxes').textContent = planPreview.length;
             document.getElementById('summary-updated-boxes').textContent = processedData.updatedBoxCount;
             document.getElementById('summary-errors').textContent = processedData.errors.length;
             document.getElementById('summary-new-boxes').textContent = processedData.newBoxCount;
