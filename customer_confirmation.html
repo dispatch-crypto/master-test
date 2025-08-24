@@ -257,7 +257,6 @@
                      return;
                 }
 
-                // FIX: Require notes when reporting an issue
                 if (status === 'Issue Reported' && !notes) {
                     alert('Please describe the issue in the "Notes" field before reporting.');
                     UI.notesInput.focus();
