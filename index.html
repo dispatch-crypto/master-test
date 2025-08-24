@@ -255,6 +255,11 @@
                 currentUser = { id: user.id, name: user.email, role: 'packer' };
             } else {
                 currentUser = { id: user.id, name: userProfile.full_name, role: userProfile.role };
+                // ADD THIS SECURITY CHECK:
+                if (currentUser.role === 'packer') {
+                    // If the user is a packer, redirect them to their primary workspace.
+                redirectTo('packing_station_final_working.html');
+                return; // Stop the rest of the dashboard from loading
             }
             
             UI.userDisplay.textContent = currentUser.name;
